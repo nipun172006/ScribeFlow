@@ -1,0 +1,19 @@
+:root {
+  --sf-bg: 10 10 11;
+  --sf-surface: 18 18 20;
+  --sf-surface-raised: 25 25 28;
+  --sf-border: 62 65 70;
+  --sf-text-primary: 245 247 250;
+  --sf-text-muted: 161 166 176;
+  --sf-accent: 45 212 191;
+  --sf-accent-contrast: 4 47 46;
+  --sf-success: 52 211 153;
+  --sf-warning: 251 191 36;
+  --sf-danger: 248 113 113;
+  --sf-radius-control: 6px;
+  --sf-radius-card: 8px;
+  --sf-radius-panel: 8px;
+  --sf-shadow-soft: 0 18px 55px rgb(0 0 0 / 0.34);
+  --sf-motion-fast: 140ms;
+  --sf-motion-normal: 220ms;
+}

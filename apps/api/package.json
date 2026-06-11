@@ -1,0 +1,41 @@
+{
+  "name": "@scribeflow/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "predev": "npm run build --workspace @scribeflow/shared",
+    "dev": "tsx watch src/server.ts",
+    "prebuild": "npm run build --workspace @scribeflow/shared",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "dependencies": {
+    "@scribeflow/shared": "*",
+    "@supabase/supabase-js": "^2.108.1",
+    "cors": "^2.8.5",
+    "express": "^4.18.0",
+    "helmet": "^8.0.0",
+    "multer": "^2.0.0",
+    "pino": "^9.0.0",
+    "pino-http": "^10.0.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^6.0.2",
+    "@types/ws": "^8.5.12",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.0",
+    "vitest": "^3.0.0"
+  }
+}

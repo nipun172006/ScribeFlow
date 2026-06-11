@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+supabase/.temp/
+npm-debug.log*
+*.log
+*.local
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo

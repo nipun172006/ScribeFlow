@@ -1,0 +1,44 @@
+import { z } from "zod";
+
+const emptyStringToUndefined = (value: unknown) =>
+  typeof value === "string" && value.trim() === "" ? undefined : value;
+
+const optionalSecretSchema = z.preprocess(
+  emptyStringToUndefined,
+  z.string().min(1).optional(),
+);
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().int().positive().default(8787),
+  CLIENT_ORIGIN: z.string().url().default("http://localhost:5173"),
+  LOG_LEVEL: z.string().min(1).default("info"),
+  DEEPGRAM_API_KEY: optionalSecretSchema,
+  DEEPGRAM_MODEL: z.string().min(1).default("nova-3"),
+  GEMINI_API_KEY: optionalSecretSchema,
+  GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash"),
+  GEMINI_EMBEDDING_MODEL: z.string().min(1).default("gemini-embedding-2"),
+  GEMINI_EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(768),
+  SUPABASE_URL: z.preprocess(emptyStringToUndefined, z.string().url().optional()),
+  SUPABASE_SECRET_KEY: optionalSecretSchema,
+  SUPABASE_SERVICE_ROLE_KEY: optionalSecretSchema,
+  SUPABASE_AUDIO_BUCKET: z.string().min(1).default("meeting-audio"),
+  SUPABASE_SIGNED_UPLOAD_TTL_SECONDS: z.coerce.number().int().positive().default(7200),
+  SUPABASE_SIGNED_DOWNLOAD_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  MAX_AUDIO_FILE_SIZE_BYTES: z.coerce.number().int().positive().default(262_144_000),
+});
+
+export type Env = z.infer<typeof envSchema>;
+
+export const env = envSchema.parse(process.env);
+
+export const providerConfig = {
+  deepgramConfigured: Boolean(env.DEEPGRAM_API_KEY),
+  geminiConfigured: Boolean(env.GEMINI_API_KEY),
+  supabaseConfigured: Boolean(
+    env.SUPABASE_URL && (env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY),
+  ),
+} as const;
+
+export const getSupabaseSecretKey = () =>
+  env.SUPABASE_SECRET_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY;
