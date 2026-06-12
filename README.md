@@ -88,6 +88,30 @@ The Phase 2 migrations create application tables with RLS enabled and no browser
 
 If Docker is unavailable, review and apply the migrations against a Supabase cloud project before using upload persistence.
 
+Cloud migration and verification commands:
+
+```bash
+npx supabase login
+npx supabase link --project-ref <project-ref>
+npx supabase migration list --linked
+npx supabase db push --dry-run
+npx supabase db push
+npx supabase migration list --linked
+npx supabase db lint --linked --fail-on error
+npx supabase gen types typescript --linked --schema public > apps/api/src/types/database.types.ts
+npm run build --workspace @scribeflow/api
+npm run start --workspace @scribeflow/api
+npm run verify:supabase-cloud
+```
+
+`npm run verify:supabase-cloud` is an opt-in integration verifier for a real
+Supabase project. It calls the running API, creates a meeting, performs a signed
+resumable TUS upload to the private bucket, confirms the upload, checks list and
+detail APIs, verifies public storage access is rejected, and verifies a
+server-authorized signed download without printing signed tokens or signed URLs.
+This checkpoint has been verified against Supabase Cloud with the signed TUS
+endpoint.
+
 ## Development Commands
 
 ```bash
@@ -128,13 +152,20 @@ Still intentionally unimplemented with typed `501` errors:
 ```text
 Browser
   -> API creates meeting and signed upload token
-  -> Browser uploads directly to private Supabase Storage with TUS
+  -> Browser uploads directly to private Supabase Storage with signed TUS
   -> Browser notifies API
   -> API verifies object metadata
   -> API marks meeting ready
 ```
 
 Audio bytes do not pass through Express. This keeps the API memory footprint smaller, allows resumable uploads, and keeps storage authorization server-controlled through short-lived signed upload tokens.
+
+ScribeFlow uses Supabase's signed resumable endpoint,
+`/storage/v1/upload/resumable/sign`, because the browser receives a temporary
+path-scoped upload token in the `x-signature` header. The ordinary authenticated
+TUS endpoint, `/storage/v1/upload/resumable`, is for user-session uploads with an
+`Authorization: Bearer <user access token>` header and is not used in this
+single-workspace backend-authorized phase.
 
 ## Frontend Routes
 

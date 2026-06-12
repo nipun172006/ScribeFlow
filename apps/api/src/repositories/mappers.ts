@@ -1,12 +1,15 @@
-import type {
-  ActionItem,
-  Meeting,
-  MeetingDetail,
-  MeetingSpeaker,
-  MeetingSummary,
-  MeetingTopic,
-  TranscriptSegment,
-  TranscriptWord,
+import {
+  actionItemStatusSchema,
+  meetingSourceTypeSchema,
+  meetingStatusSchema,
+  type ActionItem,
+  type Meeting,
+  type MeetingDetail,
+  type MeetingSpeaker,
+  type MeetingSummary,
+  type MeetingTopic,
+  type TranscriptSegment,
+  type TranscriptWord,
 } from "@scribeflow/shared";
 import type { Database, Json } from "../types/database.types.js";
 
@@ -53,8 +56,8 @@ export function mapMeeting(row: MeetingRow): Meeting {
   return {
     id: row.id,
     title: row.title,
-    sourceType: row.source_type,
-    status: row.status,
+    sourceType: meetingSourceTypeSchema.parse(row.source_type),
+    status: meetingStatusSchema.parse(row.status),
     originalFileName: row.original_file_name,
     storageBucket: row.storage_bucket,
     storagePath: row.storage_path,
@@ -127,7 +130,7 @@ export function mapActionItem(row: ActionItemRow): ActionItem {
     ownerSpeakerId: row.owner_speaker_id,
     deadline: mapNullableDate(row.deadline),
     deadlineText: row.deadline_text,
-    status: row.status,
+    status: actionItemStatusSchema.parse(row.status),
     confidence: row.confidence,
     sourceSegmentId: row.source_segment_id,
     sourceStartMs: row.source_start_ms,

@@ -132,7 +132,8 @@ function makeStorage(overrides: Partial<StorageService> = {}) {
   const storage: StorageService = {
     createSignedResumableUpload: vi.fn(async (input) => ({
       protocol: "tus" as const,
-      endpoint: "https://project-ref.storage.supabase.co/storage/v1/upload/resumable",
+      endpoint:
+        "https://project-ref.storage.supabase.co/storage/v1/upload/resumable/sign",
       bucket: input.bucket,
       objectPath: input.objectPath,
       token: "signed-test-token",
@@ -259,6 +260,12 @@ describe("Phase 2 persistence API", () => {
         token: "signed-test-token",
         chunkSizeBytes: 6 * 1024 * 1024,
       });
+      expect(response.body.upload.endpoint).toMatch(
+        /\/storage\/v1\/upload\/resumable\/sign$/,
+      );
+      expect(JSON.stringify(response.body.upload)).not.toContain(
+        "sb_secret_fake_backend_key",
+      );
       expect(repository.createUploadMeeting).toHaveBeenCalledWith(
         expect.objectContaining({
           knownParticipants: ["Arjun", "Priya"],

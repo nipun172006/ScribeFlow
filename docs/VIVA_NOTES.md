@@ -95,3 +95,54 @@ Database persistence means safely storing records and files. AI processing means
 ## Snake Case vs Camel Case
 
 Postgres column names use `snake_case`, which is conventional in SQL. API objects use `camelCase`, which is conventional in TypeScript. Mapper functions convert between the two so frontend code does not depend on raw database row shapes.
+
+## Local Migration vs Remote Migration
+
+A local migration runs against a developer Supabase stack, usually through Docker.
+A remote migration runs against the cloud Supabase project. Both should apply the
+same SQL files so the code and deployed database stay in sync.
+
+## Migration History
+
+Supabase records which migration timestamps were applied. This history prevents
+the same migration from being applied twice and helps teams understand which
+schema version a project is running.
+
+## `supabase link`
+
+`supabase link` connects the local `supabase/` folder to one cloud project. It
+does not copy secrets into frontend code; it lets CLI commands know which remote
+project should receive migrations.
+
+## `db push`
+
+`supabase db push` compares local migration files with the linked project and
+applies missing migrations. A dry run should be checked first so the team can
+review what would change before writing to the cloud database.
+
+## Generated Database Types
+
+Generated database types are better than hand-maintained types because they come
+from the real database schema. If a column or table changes, regeneration makes
+TypeScript catch mismatches in repositories and mappers.
+
+## Signed Upload Verification
+
+The cloud verifier creates a real meeting, receives a signed TUS token, uploads
+bytes to private storage, asks the API to verify the object and then checks that
+list/detail APIs return the persisted meeting. It prints only safe identifiers
+and byte counts, not credentials or signed URLs.
+
+Supabase has two resumable upload routes. The ordinary route,
+`/storage/v1/upload/resumable`, is for a logged-in user session and uses an
+`Authorization` bearer token. ScribeFlow uses the signed route,
+`/storage/v1/upload/resumable/sign`, because the backend creates a temporary
+path-scoped upload token and the browser sends it as `x-signature`. This keeps
+the server secret on the API while still allowing direct browser-to-storage
+upload progress.
+
+## Unit Test vs Integration Test
+
+A unit test checks one boundary with doubles or fixtures. An integration test
+checks real systems working together, such as the API, Supabase database,
+private Storage and the TUS upload protocol.

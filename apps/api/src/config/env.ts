@@ -32,13 +32,42 @@ export type Env = z.infer<typeof envSchema>;
 
 export const env = envSchema.parse(process.env);
 
+const isCurrentSupabaseSecretKey = (value: string | undefined) =>
+  Boolean(value?.startsWith("sb_secret_"));
+
+const isLegacyServiceRoleKey = (value: string | undefined) => {
+  if (!value) {
+    return false;
+  }
+
+  const [, payload] = value.split(".");
+  if (!payload) {
+    return false;
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      role?: unknown;
+    };
+    return decoded.role === "service_role";
+  } catch {
+    return false;
+  }
+};
+
+export const supabaseBackendKeyConfigured =
+  isCurrentSupabaseSecretKey(env.SUPABASE_SECRET_KEY) ||
+  isLegacyServiceRoleKey(env.SUPABASE_SERVICE_ROLE_KEY);
+
 export const providerConfig = {
   deepgramConfigured: Boolean(env.DEEPGRAM_API_KEY),
   geminiConfigured: Boolean(env.GEMINI_API_KEY),
-  supabaseConfigured: Boolean(
-    env.SUPABASE_URL && (env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY),
-  ),
+  supabaseConfigured: Boolean(env.SUPABASE_URL && supabaseBackendKeyConfigured),
 } as const;
 
 export const getSupabaseSecretKey = () =>
-  env.SUPABASE_SECRET_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY;
+  isCurrentSupabaseSecretKey(env.SUPABASE_SECRET_KEY)
+    ? env.SUPABASE_SECRET_KEY
+    : isLegacyServiceRoleKey(env.SUPABASE_SERVICE_ROLE_KEY)
+      ? env.SUPABASE_SERVICE_ROLE_KEY
+      : undefined;

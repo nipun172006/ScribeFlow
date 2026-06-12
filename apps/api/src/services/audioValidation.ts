@@ -94,11 +94,13 @@ export function assertUuid(value: string, message = "A valid UUID is required.")
   }
 }
 
+const signedTusPath = "/storage/v1/upload/resumable/sign";
+
 export function deriveTusEndpoint(supabaseUrl: string) {
   const url = new URL(supabaseUrl);
 
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw ApiError.storageOperationFailed("Supabase URL must use HTTP or HTTPS.");
+  if (url.protocol !== "https:") {
+    throw ApiError.storageOperationFailed("Supabase URL must use HTTPS.");
   }
 
   if (url.hostname.endsWith(".supabase.co")) {
@@ -109,10 +111,16 @@ export function deriveTusEndpoint(supabaseUrl: string) {
       );
     }
 
-    return `${url.protocol}//${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
+    return `${url.protocol}//${projectRef}.storage.supabase.co${signedTusPath}`;
   }
 
-  return `${url.origin}/storage/v1/upload/resumable`;
+  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+    return `${url.origin}${signedTusPath}`;
+  }
+
+  throw ApiError.storageOperationFailed(
+    "Supabase URL must use a Supabase or local development hostname.",
+  );
 }
 
 export function isAllowedMimeType(mimeType: string | null | undefined) {

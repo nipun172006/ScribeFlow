@@ -39,10 +39,29 @@ describe("audio upload validation", () => {
 
   it("derives direct Supabase Storage TUS endpoints safely", () => {
     expect(deriveTusEndpoint("https://project-ref.supabase.co")).toBe(
-      "https://project-ref.storage.supabase.co/storage/v1/upload/resumable",
+      "https://project-ref.storage.supabase.co/storage/v1/upload/resumable/sign",
     );
-    expect(deriveTusEndpoint("http://127.0.0.1:54321")).toBe(
-      "http://127.0.0.1:54321/storage/v1/upload/resumable",
+    expect(deriveTusEndpoint("https://project-ref.storage.supabase.co")).toBe(
+      "https://project-ref.storage.supabase.co/storage/v1/upload/resumable/sign",
+    );
+  });
+
+  it("uses the signed TUS route without duplicating the sign suffix", () => {
+    const endpoint = deriveTusEndpoint(
+      "https://project-ref.supabase.co/storage/v1/upload/resumable/sign",
+    );
+
+    expect(endpoint).toMatch(/\/storage\/v1\/upload\/resumable\/sign$/);
+    expect(endpoint).not.toMatch(/\/storage\/v1\/upload\/resumable$/);
+    expect(endpoint).not.toContain("/sign/sign");
+  });
+
+  it("rejects non-HTTPS and unexpected Supabase hostnames", () => {
+    expect(() => deriveTusEndpoint("http://project-ref.supabase.co")).toThrow(
+      "must use HTTPS",
+    );
+    expect(() => deriveTusEndpoint("https://example.com")).toThrow(
+      "Supabase or local development hostname",
     );
   });
 

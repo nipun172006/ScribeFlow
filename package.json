@@ -27,7 +27,8 @@
     "supabase:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:lint": "supabase db lint",
-    "db:types": "supabase gen types typescript --local --schema public,storage > apps/api/src/types/database.types.ts"
+    "db:types": "supabase gen types typescript --local --schema public,storage > apps/api/src/types/database.types.ts",
+    "verify:supabase-cloud": "node apps/api/scripts/verifySupabaseCloudUpload.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

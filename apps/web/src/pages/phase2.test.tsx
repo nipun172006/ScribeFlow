@@ -71,7 +71,8 @@ function makeMeeting(overrides: Partial<Meeting> = {}): Meeting {
 function uploadInstructions(): UploadInstructions {
   return {
     protocol: "tus",
-    endpoint: "https://project-ref.storage.supabase.co/storage/v1/upload/resumable",
+    endpoint:
+      "https://project-ref.storage.supabase.co/storage/v1/upload/resumable/sign",
     bucket: "meeting-audio",
     objectPath: `${meetingId}/audio.m4a`,
     token: "signed-token",

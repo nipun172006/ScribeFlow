@@ -15,6 +15,19 @@ Dependencies: Phase 1 shared schemas and data model.
 Acceptance tests: migration contract tests, API tests with repository/storage doubles, upload validation tests, frontend upload/archive/detail tests, typecheck, lint and build.  
 Main risks: migration execution still needs a real local or cloud Supabase project; TUS upload behavior must be verified against a real bucket before demo.
 
+### Phase 2.5 Cloud Verification Checkpoint
+
+Deliverables: link Supabase CLI to the cloud project, push both migrations,
+generate linked database types, run linked database lint, and run
+`npm run verify:supabase-cloud` against a real running API.
+Current status: complete. Cloud migrations and generated types are in place, the
+signed TUS verifier succeeds against Supabase Cloud, public access is rejected
+and signed server-authorized retrieval succeeds.
+Acceptance tests: migration list shows both local timestamps applied remotely;
+the verifier creates a meeting, uploads bytes through signed TUS, confirms the
+object, verifies list/detail APIs, rejects public storage access and verifies a
+short-lived signed download.
+
 ## 3. Uploaded-Audio Transcription and Diarisation
 
 Deliverables: Deepgram upload transcription, diarisation normalization, persisted speaker and transcript segment rows, deterministic duration/speaking-time calculations.  

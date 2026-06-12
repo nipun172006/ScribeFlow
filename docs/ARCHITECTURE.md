@@ -53,12 +53,49 @@ sequenceDiagram
   Browser->>API: POST /api/meetings/upload metadata
   API->>Database: Insert meeting status uploading
   API->>Storage: Create signed upload token
-  API-->>Browser: Meeting ID + TUS endpoint + signed token
-  Browser->>Storage: TUS upload with x-signature
+  API-->>Browser: Meeting ID + signed TUS endpoint + signed token
+  Browser->>Storage: TUS upload to /upload/resumable/sign with x-signature
   Browser->>API: POST /api/meetings/:id/upload/complete
   API->>Storage: Verify object size and MIME metadata
   API->>Database: status created, upload_completed_at, file_size_bytes
 ```
+
+## Cloud Verification Flow
+
+The opt-in `npm run verify:supabase-cloud` script exercises the same Phase 2
+boundaries against a real running API and Supabase project:
+
+```text
+Browser/API verifier
+  -> API creates meeting
+  -> API creates signed upload token
+  -> TUS client uploads to private Supabase Storage
+  -> API verifies storage metadata
+  -> API marks meeting created
+  -> list/detail APIs return persisted data
+```
+
+The script is intentionally API-side because it also checks private storage with
+a backend key. It keeps signed upload tokens and signed download URLs in memory
+only and prints safe evidence such as HTTP status codes, meeting ID, object path
+and byte counts.
+
+Supabase has two resumable upload authorization modes:
+
+```text
+User-authenticated TUS:
+  /storage/v1/upload/resumable
+  Authorization: Bearer <user access token>
+
+Signed TUS:
+  /storage/v1/upload/resumable/sign
+  x-signature: <signed upload token>
+```
+
+ScribeFlow uses the signed TUS endpoint in Phase 2. The browser receives only a
+short-lived path-scoped token and never receives the Supabase server secret.
+The cloud verifier has confirmed signed upload, private public-access rejection,
+signed server-authorized retrieval, and persisted meeting list/detail reads.
 
 ## Planned AI Data Flow After Upload
 
