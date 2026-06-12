@@ -5,6 +5,7 @@ const statusLabels: Record<MeetingStatus, string> = {
   created: "Created",
   uploading: "Uploading",
   transcribing: "Transcribing",
+  transcribed: "Transcribed",
   analysing: "Analysing",
   indexing: "Indexing",
   completed: "Completed",

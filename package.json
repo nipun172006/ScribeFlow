@@ -28,7 +28,9 @@
     "db:reset": "supabase db reset",
     "db:lint": "supabase db lint",
     "db:types": "supabase gen types typescript --local --schema public,storage > apps/api/src/types/database.types.ts",
-    "verify:supabase-cloud": "node apps/api/scripts/verifySupabaseCloudUpload.mjs"
+    "verify:supabase-cloud": "node apps/api/scripts/verifySupabaseCloudUpload.mjs",
+    "verify:deepgram": "node apps/api/scripts/verifyDeepgramTranscription.mjs",
+    "evaluate:wer": "node apps/api/scripts/evaluateWer.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

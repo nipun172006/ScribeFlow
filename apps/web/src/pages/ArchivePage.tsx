@@ -86,6 +86,7 @@ export function ArchivePage() {
               <option value="created">Created</option>
               <option value="uploading">Uploading</option>
               <option value="transcribing">Transcribing</option>
+              <option value="transcribed">Transcribed</option>
               <option value="analysing">Analysing</option>
               <option value="indexing">Indexing</option>
               <option value="completed">Completed</option>

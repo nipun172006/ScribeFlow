@@ -1,9 +1,17 @@
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Meeting, MeetingDetail } from "@scribeflow/shared";
+import type {
+  Meeting,
+  MeetingDetail,
+  NormalizedTranscription,
+} from "@scribeflow/shared";
 import { createApp } from "../src/app.js";
 import type { ApiDependencies } from "../src/dependencies.js";
-import type { MeetingRepository, StorageService } from "../src/services/interfaces.js";
+import type {
+  MeetingRepository,
+  StorageService,
+  TranscriptionService,
+} from "../src/services/interfaces.js";
 import { withTestServer } from "./testServer.js";
 
 const meetingId = "11111111-1111-4111-8111-111111111111";
@@ -72,6 +80,62 @@ function makeRepository(overrides: Partial<MeetingRepository> = {}) {
         errorMessage: input.errorMessage,
       }),
     ),
+    markTranscriptionStarted: vi.fn(async () =>
+      makeMeeting({
+        status: "transcribing",
+        fileSizeBytes: 1000,
+        processingStartedAt: now,
+      }),
+    ),
+    replaceMeetingTranscription: vi.fn(async (input) => ({
+      meeting: makeMeeting({
+        status: "transcribed",
+        fileSizeBytes: 1000,
+        durationSeconds: input.transcription.durationSeconds,
+        processingStartedAt: input.processingStartedAt,
+        processingTimeMs: input.processingTimeMs,
+      }),
+      speakers: [
+        {
+          id: speakerId,
+          meetingId,
+          rawSpeakerIndex: 0,
+          displayName: "Speaker 1",
+          totalSpeakingSeconds: 1,
+          speakingPercentage: 100,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      transcriptSegments: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          meetingId,
+          speakerId,
+          rawSpeakerIndex: 0,
+          segmentIndex: 0,
+          startMs: 0,
+          endMs: 1000,
+          text: "Hello from the transcript.",
+          confidence: 0.98,
+          words: [],
+        },
+      ],
+      transcription: {
+        provider: "deepgram" as const,
+        requestId: input.transcription.providerRequestId,
+        modelName: input.transcription.modelName,
+        diarizeModel: input.transcription.diarizeModel,
+        language: input.transcription.language,
+        durationSeconds: input.transcription.durationSeconds,
+        speakerCount: input.transcription.speakers.length,
+        segmentCount: input.transcription.segments.length,
+        wordCount: input.transcription.wordCount,
+        confidence: input.transcription.confidence,
+        processingTimeMs: input.processingTimeMs,
+      },
+      alreadyTranscribed: false,
+    })),
     listMeetings: vi.fn(async () => ({
       items: [makeMeeting({ status: "created", fileSizeBytes: 1000 })],
       pagination: {
@@ -155,13 +219,57 @@ function makeStorage(overrides: Partial<StorageService> = {}) {
   return storage;
 }
 
-function createMockedApp(repository = makeRepository(), storage = makeStorage()) {
+function makeTranscriptionService(
+  overrides: Partial<TranscriptionService> = {},
+): TranscriptionService {
+  const transcription: NormalizedTranscription = {
+    providerRequestId: "dg-request-123",
+    language: "en",
+    durationSeconds: 1,
+    modelName: "nova-3",
+    diarizeModel: "latest",
+    confidence: 0.98,
+    wordCount: 4,
+    speakers: [
+      {
+        rawSpeakerIndex: 0,
+        displayName: "Speaker 1",
+        totalSpeakingSeconds: 1,
+        speakingPercentage: 100,
+      },
+    ],
+    segments: [
+      {
+        segmentIndex: 0,
+        rawSpeakerIndex: 0,
+        startMs: 0,
+        endMs: 1000,
+        text: "Hello from the transcript.",
+        confidence: 0.98,
+        words: [],
+      },
+    ],
+  };
+
+  return {
+    isConfigured: vi.fn(() => true),
+    transcribeRecording: vi.fn(async () => transcription),
+    ...overrides,
+  };
+}
+
+function createMockedApp(
+  repository = makeRepository(),
+  storage = makeStorage(),
+  transcriptionService = makeTranscriptionService(),
+) {
   const dependencies: ApiDependencies = {
     getMeetingRepository: () => repository,
     getStorageService: () => storage,
+    getTranscriptionService: () => transcriptionService,
   };
 
-  return { app: createApp(dependencies), repository, storage };
+  return { app: createApp(dependencies), repository, storage, transcriptionService };
 }
 
 describe("Phase 2 persistence API", () => {
@@ -353,6 +461,136 @@ describe("Phase 2 persistence API", () => {
         .expect(200);
       expect(actionResponse.body.actionItem.status).toBe("completed");
       expect(actionResponse.body.actionItem.completedAt).toBe(now);
+    });
+  });
+
+  it("transcribes uploaded meetings through the transcription service boundary", async () => {
+    const repository = makeRepository();
+    const storage = makeStorage();
+    const transcriptionService = makeTranscriptionService();
+    const { app } = createMockedApp(repository, storage, transcriptionService);
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/transcribe`)
+        .expect(200);
+
+      expect(response.body.meeting.status).toBe("transcribed");
+      expect(response.body.alreadyTranscribed).toBe(false);
+      expect(response.body.transcription).toMatchObject({
+        provider: "deepgram",
+        requestId: "dg-request-123",
+        modelName: "nova-3",
+        diarizeModel: "latest",
+        wordCount: 4,
+      });
+      expect(response.body.transcriptSegments).toHaveLength(1);
+      expect(storage.createSignedDownloadUrl).toHaveBeenCalledWith({
+        bucket: "meeting-audio",
+        objectPath: `${meetingId}/audio.m4a`,
+      });
+      expect(transcriptionService.transcribeRecording).toHaveBeenCalledWith(
+        expect.objectContaining({
+          language: "en",
+          knownParticipants: ["Arjun", "Priya"],
+          technicalTerms: ["Supabase"],
+        }),
+      );
+      expect(repository.markTranscriptionStarted).toHaveBeenCalledWith(meetingId);
+      expect(repository.replaceMeetingTranscription).toHaveBeenCalled();
+    });
+  });
+
+  it("does not call Deepgram again when a transcript already exists", async () => {
+    const repository = makeRepository({
+      getMeetingDetail: vi.fn(async () => ({
+        meeting: makeMeeting({ status: "transcribed", fileSizeBytes: 1000 }),
+        speakers: [],
+        transcriptSegments: [
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            meetingId,
+            speakerId: null,
+            rawSpeakerIndex: 0,
+            segmentIndex: 0,
+            startMs: 0,
+            endMs: 1000,
+            text: "Already saved.",
+            confidence: null,
+            words: [],
+          },
+        ],
+        summary: null,
+        actionItems: [],
+        topics: [],
+        chunkCount: 0,
+      })),
+    });
+    const transcriptionService = makeTranscriptionService();
+    const { app } = createMockedApp(repository, makeStorage(), transcriptionService);
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/transcribe`)
+        .expect(200);
+
+      expect(response.body.alreadyTranscribed).toBe(true);
+      expect(response.body.transcription).toMatchObject({
+        provider: "deepgram",
+        speakerCount: 0,
+        segmentCount: 1,
+      });
+      expect(transcriptionService.transcribeRecording).not.toHaveBeenCalled();
+      expect(repository.markTranscriptionStarted).not.toHaveBeenCalled();
+    });
+  });
+
+  it("rejects transcription when upload is incomplete or Deepgram is not configured", async () => {
+    const incompleteRepository = makeRepository({
+      getMeetingDetail: vi.fn(async () => ({
+        meeting: makeMeeting({ status: "uploading" }),
+        speakers: [],
+        transcriptSegments: [],
+        summary: null,
+        actionItems: [],
+        topics: [],
+        chunkCount: 0,
+      })),
+    });
+    const incompleteApp = createMockedApp(incompleteRepository).app;
+
+    await withTestServer(incompleteApp, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/transcribe`)
+        .expect(409);
+
+      expect(response.body.error.code).toBe("UPLOAD_NOT_COMPLETE");
+    });
+
+    const unconfiguredRepository = makeRepository({
+      getMeetingDetail: vi.fn(async () => ({
+        meeting: makeMeeting({ status: "created", fileSizeBytes: 1000 }),
+        speakers: [],
+        transcriptSegments: [],
+        summary: null,
+        actionItems: [],
+        topics: [],
+        chunkCount: 0,
+      })),
+    });
+    const unconfiguredApp = createMockedApp(
+      unconfiguredRepository,
+      makeStorage(),
+      makeTranscriptionService({ isConfigured: vi.fn(() => false) }),
+    ).app;
+
+    await withTestServer(unconfiguredApp, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/transcribe`)
+        .expect(503);
+
+      expect(response.body.error.code).toBe("DEEPGRAM_NOT_CONFIGURED");
+      expect(unconfiguredRepository.markTranscriptionStarted).not.toHaveBeenCalled();
     });
   });
 });

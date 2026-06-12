@@ -7,6 +7,7 @@ import { renderWithProviders } from "../test/renderWithProviders";
 import { ArchivePage } from "./ArchivePage";
 import { MeetingDetailPage } from "./MeetingDetailPage";
 import { NewMeetingPage } from "./NewMeetingPage";
+import { ProcessingPage } from "./ProcessingPage";
 
 const apiClient = vi.hoisted(() => ({
   initializeUploadMeeting: vi.fn(),
@@ -15,6 +16,7 @@ const apiClient = vi.hoisted(() => ({
   createLiveMeeting: vi.fn(),
   listMeetings: vi.fn(),
   getMeetingDetail: vi.fn(),
+  transcribeMeeting: vi.fn(),
   renameSpeaker: vi.fn(),
   updateActionItemStatus: vi.fn(),
 }));
@@ -196,5 +198,94 @@ describe("Phase 2 frontend integration", () => {
     expect(await screen.findByText(/summary unavailable/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: /transcript/i }));
     expect(screen.getByText(/transcript unavailable/i)).toBeInTheDocument();
+  });
+
+  it("starts real uploaded-audio transcription from the processing page", async () => {
+    apiClient.transcribeMeeting.mockResolvedValue({
+      meeting: makeMeeting({ status: "transcribed" }),
+      speakers: [],
+      transcriptSegments: [],
+      alreadyTranscribed: false,
+    });
+
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/meetings/${meetingId}/processing`]}>
+        <Routes>
+          <Route path="/meetings/:meetingId/processing" element={<ProcessingPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(/recording uploaded successfully/i),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(apiClient.transcribeMeeting).toHaveBeenCalledWith(meetingId),
+    );
+  });
+
+  it("renders persisted transcript search and deterministic speaker analytics", async () => {
+    const user = userEvent.setup();
+    apiClient.getMeetingDetail.mockResolvedValue({
+      meeting: makeMeeting({ status: "transcribed", durationSeconds: 12 }),
+      speakers: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          meetingId,
+          rawSpeakerIndex: 0,
+          displayName: "Priya",
+          totalSpeakingSeconds: 6,
+          speakingPercentage: 60,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          meetingId,
+          rawSpeakerIndex: 1,
+          displayName: "Arjun",
+          totalSpeakingSeconds: 4,
+          speakingPercentage: 40,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      transcriptSegments: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          meetingId,
+          speakerId: "22222222-2222-4222-8222-222222222222",
+          rawSpeakerIndex: 0,
+          segmentIndex: 0,
+          startMs: 0,
+          endMs: 3000,
+          text: "We need posters for the event.",
+          confidence: 0.95,
+          words: [],
+        },
+      ],
+      summary: null,
+      actionItems: [],
+      topics: [],
+      chunkCount: 0,
+    } satisfies MeetingDetail);
+
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/meetings/${meetingId}`]}>
+        <Routes>
+          <Route path="/meetings/:meetingId" element={<MeetingDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole("tab", { name: /transcript/i }));
+    expect(screen.getByText(/we need posters for the event/i)).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/search transcript/i), "posters");
+    expect(screen.getByText(/we need posters for the event/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /analytics/i }));
+    expect(screen.getByText(/speaking-time distribution/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Priya").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("60.0%").length).toBeGreaterThan(0);
   });
 });

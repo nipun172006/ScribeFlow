@@ -16,6 +16,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@deepgram/sdk": "^5.4.0",
     "@scribeflow/shared": "*",
     "@supabase/supabase-js": "^2.108.1",
     "cors": "^2.8.5",

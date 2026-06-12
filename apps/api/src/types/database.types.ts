@@ -424,7 +424,25 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      replace_meeting_transcription: {
+        Args: {
+          p_confidence: number;
+          p_diarize_model: string;
+          p_duration_seconds: number;
+          p_language: string;
+          p_meeting_id: string;
+          p_model_name: string;
+          p_processing_started_at: string;
+          p_processing_time_ms: number;
+          p_provider_request_id: string;
+          p_segment_count: number;
+          p_segments: Json;
+          p_speaker_count: number;
+          p_speakers: Json;
+          p_word_count: number;
+        };
+        Returns: undefined;
+      };
     };
     Enums: {
       [_ in never]: never;

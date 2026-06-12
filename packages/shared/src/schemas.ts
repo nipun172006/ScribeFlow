@@ -13,6 +13,7 @@ export const meetingStatusSchema = z.enum([
   "created",
   "uploading",
   "transcribing",
+  "transcribed",
   "analysing",
   "indexing",
   "completed",
@@ -59,9 +60,12 @@ export const meetingSpeakerSchema = z.object({
 
 export const transcriptWordSchema = z.object({
   text: z.string().min(1),
+  punctuatedText: z.string().min(1).nullable().optional(),
   startMs: z.number().int().nonnegative(),
   endMs: z.number().int().nonnegative(),
   confidence: z.number().min(0).max(1).nullable(),
+  rawSpeakerIndex: z.number().int().nonnegative().nullable().optional(),
+  speakerConfidence: z.number().min(0).max(1).nullable().optional(),
 });
 
 export const transcriptSegmentSchema = z.object({
@@ -75,6 +79,35 @@ export const transcriptSegmentSchema = z.object({
   text: z.string(),
   confidence: z.number().min(0).max(1).nullable(),
   words: z.array(transcriptWordSchema).optional(),
+});
+
+export const normalizedTranscriptSegmentSchema = z.object({
+  segmentIndex: z.number().int().nonnegative(),
+  rawSpeakerIndex: z.number().int().nonnegative().nullable(),
+  startMs: z.number().int().nonnegative(),
+  endMs: z.number().int().nonnegative(),
+  text: z.string().min(1),
+  confidence: z.number().min(0).max(1).nullable(),
+  words: z.array(transcriptWordSchema),
+});
+
+export const normalizedSpeakerSchema = z.object({
+  rawSpeakerIndex: z.number().int().nonnegative(),
+  displayName: z.string().min(1),
+  totalSpeakingSeconds: z.number().nonnegative(),
+  speakingPercentage: z.number().min(0).max(100),
+});
+
+export const normalizedTranscriptionSchema = z.object({
+  providerRequestId: z.string().min(1).nullable(),
+  language: z.string().min(1).nullable(),
+  durationSeconds: z.number().nonnegative().nullable(),
+  modelName: z.string().min(1).nullable(),
+  diarizeModel: z.string().min(1),
+  confidence: z.number().min(0).max(1).nullable(),
+  wordCount: z.number().int().nonnegative(),
+  speakers: z.array(normalizedSpeakerSchema),
+  segments: z.array(normalizedTranscriptSegmentSchema),
 });
 
 export const actionItemStatusSchema = z.enum(["open", "completed"]);
@@ -236,6 +269,28 @@ export const meetingDetailSchema = z.object({
   chunkCount: z.number().int().nonnegative(),
 });
 
+export const transcriptionSummarySchema = z.object({
+  provider: z.literal("deepgram"),
+  requestId: z.string().min(1).nullable(),
+  modelName: z.string().min(1).nullable(),
+  diarizeModel: z.string().min(1).nullable(),
+  language: z.string().min(1).nullable(),
+  durationSeconds: z.number().nonnegative().nullable(),
+  speakerCount: z.number().int().nonnegative(),
+  segmentCount: z.number().int().nonnegative(),
+  wordCount: z.number().int().nonnegative(),
+  confidence: z.number().min(0).max(1).nullable(),
+  processingTimeMs: z.number().int().nonnegative().nullable(),
+});
+
+export const transcribeMeetingResponseSchema = z.object({
+  meeting: meetingSchema,
+  speakers: z.array(meetingSpeakerSchema),
+  transcriptSegments: z.array(transcriptSegmentSchema),
+  transcription: transcriptionSummarySchema,
+  alreadyTranscribed: z.boolean(),
+});
+
 export const uploadFailureInputSchema = z.object({
   errorCode: z
     .string()
@@ -250,6 +305,7 @@ export const apiErrorCodeSchema = z.enum([
   "BAD_REQUEST",
   "FEATURE_NOT_IMPLEMENTED",
   "SUPABASE_NOT_CONFIGURED",
+  "DEEPGRAM_NOT_CONFIGURED",
   "INVALID_UUID",
   "UNSUPPORTED_FILE_EXTENSION",
   "UNSUPPORTED_MIME_TYPE",
@@ -258,6 +314,19 @@ export const apiErrorCodeSchema = z.enum([
   "SPEAKER_NOT_FOUND",
   "ACTION_ITEM_NOT_FOUND",
   "INVALID_MEETING_STATE",
+  "UPLOAD_NOT_COMPLETE",
+  "TRANSCRIPTION_ALREADY_RUNNING",
+  "AUDIO_STORAGE_MISSING",
+  "SIGNED_AUDIO_URL_FAILED",
+  "DEEPGRAM_AUTH_FAILED",
+  "DEEPGRAM_RATE_LIMITED",
+  "DEEPGRAM_REQUEST_TIMEOUT",
+  "DEEPGRAM_REQUEST_FAILED",
+  "DEEPGRAM_INVALID_RESPONSE",
+  "NO_SPEECH_DETECTED",
+  "TRANSCRIPT_PERSISTENCE_FAILED",
+  "TRANSCRIPTION_PROVIDER_FAILED",
+  "TRANSCRIPTION_OUTPUT_INVALID",
   "UPLOAD_SIGNING_FAILED",
   "STORAGE_OBJECT_MISSING",
   "STORAGE_METADATA_MISMATCH",

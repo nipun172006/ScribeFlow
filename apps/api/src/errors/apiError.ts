@@ -77,6 +77,14 @@ export class ApiError extends Error {
     );
   }
 
+  static deepgramNotConfigured() {
+    return new ApiError(
+      503,
+      "DEEPGRAM_NOT_CONFIGURED",
+      "Deepgram transcription is not configured on the server.",
+    );
+  }
+
   static databaseOperationFailed(message = "Database operation failed.") {
     return new ApiError(500, "DATABASE_OPERATION_FAILED", message);
   }
@@ -87,6 +95,88 @@ export class ApiError extends Error {
 
   static uploadSigningFailed(message = "Could not create a signed upload token.") {
     return new ApiError(502, "UPLOAD_SIGNING_FAILED", message);
+  }
+
+  static audioStorageMissing() {
+    return new ApiError(
+      409,
+      "AUDIO_STORAGE_MISSING",
+      "This meeting does not have verified private audio storage metadata.",
+    );
+  }
+
+  static signedAudioUrlFailed() {
+    return new ApiError(
+      502,
+      "SIGNED_AUDIO_URL_FAILED",
+      "Could not create a private audio access URL for transcription.",
+    );
+  }
+
+  static deepgramAuthFailed() {
+    return new ApiError(
+      502,
+      "DEEPGRAM_AUTH_FAILED",
+      "Deepgram rejected the configured server credentials.",
+    );
+  }
+
+  static deepgramRateLimited() {
+    return new ApiError(
+      503,
+      "DEEPGRAM_RATE_LIMITED",
+      "Deepgram rate-limited the transcription request. Please retry later.",
+    );
+  }
+
+  static deepgramRequestTimeout() {
+    return new ApiError(
+      504,
+      "DEEPGRAM_REQUEST_TIMEOUT",
+      "Deepgram transcription did not finish before the configured timeout.",
+    );
+  }
+
+  static deepgramRequestFailed() {
+    return new ApiError(
+      502,
+      "DEEPGRAM_REQUEST_FAILED",
+      "Deepgram transcription failed. Please retry after checking the server configuration and audio file.",
+    );
+  }
+
+  static deepgramInvalidResponse(
+    message = "Deepgram returned transcription output that could not be normalized.",
+  ) {
+    return new ApiError(502, "DEEPGRAM_INVALID_RESPONSE", message);
+  }
+
+  static noSpeechDetected() {
+    return new ApiError(
+      422,
+      "NO_SPEECH_DETECTED",
+      "Deepgram returned no usable speech segments for this recording.",
+    );
+  }
+
+  static transcriptPersistenceFailed() {
+    return new ApiError(
+      500,
+      "TRANSCRIPT_PERSISTENCE_FAILED",
+      "Could not persist the normalized transcription.",
+    );
+  }
+
+  static transcriptionProviderFailed(
+    message = "Deepgram transcription failed. Please retry after checking the server configuration and audio file.",
+  ) {
+    return new ApiError(502, "TRANSCRIPTION_PROVIDER_FAILED", message);
+  }
+
+  static transcriptionOutputInvalid(
+    message = "Deepgram returned transcription output that could not be normalized.",
+  ) {
+    return new ApiError(502, "TRANSCRIPTION_OUTPUT_INVALID", message);
   }
 
   static routeNotFound(message: string) {

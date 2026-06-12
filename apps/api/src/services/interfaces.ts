@@ -5,28 +5,31 @@ import type {
   MeetingDetail,
   MeetingListQuery,
   MeetingSpeaker,
+  NormalizedTranscription,
   MeetingSummary,
   PaginatedMeetingList,
   SearchInput,
   SearchResult,
   StartLiveMeetingInput,
   TranscriptSegment,
+  TranscribeMeetingResponse,
   UpdateActionItemInput,
   UploadInstructions,
   UploadMeetingInput,
 } from "@scribeflow/shared";
 
-export type AudioSource = {
-  buffer: Buffer;
-  originalFileName: string;
-  mimeType: string;
+export type TranscribeRecordingInput = {
+  audioUrl: string;
+  language: string | null;
+  knownParticipants: string[];
+  technicalTerms: string[];
 };
 
-export type TranscriptionResult = {
-  language: string | null;
-  durationSeconds: number | null;
-  speakers: MeetingSpeaker[];
-  segments: TranscriptSegment[];
+export type ReplaceMeetingTranscriptionInput = {
+  meetingId: string;
+  transcription: NormalizedTranscription;
+  processingStartedAt: string;
+  processingTimeMs: number;
 };
 
 export type MeetingAnalysisResult = {
@@ -62,8 +65,10 @@ export type UploadObjectInfo = {
 };
 
 export interface TranscriptionService {
-  transcribeUpload(audio: AudioSource): Promise<TranscriptionResult>;
-  startLiveSession(meetingId: string): Promise<void>;
+  isConfigured(): boolean;
+  transcribeRecording(
+    input: TranscribeRecordingInput,
+  ): Promise<NormalizedTranscription>;
 }
 
 export interface MeetingAnalysisService {
@@ -91,6 +96,10 @@ export interface MeetingRepository {
     errorCode: string;
     errorMessage: string;
   }): Promise<Meeting>;
+  markTranscriptionStarted(meetingId: string): Promise<Meeting>;
+  replaceMeetingTranscription(
+    input: ReplaceMeetingTranscriptionInput,
+  ): Promise<TranscribeMeetingResponse>;
   listMeetings(query: MeetingListQuery): Promise<PaginatedMeetingList>;
   getMeetingById(meetingId: string): Promise<Meeting | null>;
   getMeetingDetail(meetingId: string): Promise<MeetingDetail | null>;

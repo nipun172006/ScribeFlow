@@ -6,6 +6,7 @@ import type {
   MeetingSpeaker,
   PaginatedMeetingList,
   StartLiveMeetingInput,
+  TranscribeMeetingResponse,
   UpdateActionItemInput,
   UploadCompletionResponse,
   UploadFailureInput,
@@ -118,6 +119,12 @@ export function listMeetings(query: Partial<MeetingListQuery> = {}) {
 
 export function getMeetingDetail(meetingId: string) {
   return jsonRequest<MeetingDetail>(`/meetings/${meetingId}`);
+}
+
+export function transcribeMeeting(meetingId: string) {
+  return jsonRequest<TranscribeMeetingResponse>(`/meetings/${meetingId}/transcribe`, {
+    method: "POST",
+  });
 }
 
 export function renameSpeaker(params: {

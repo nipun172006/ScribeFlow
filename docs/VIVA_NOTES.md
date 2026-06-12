@@ -2,15 +2,27 @@
 
 ## Speech-to-Text
 
-Speech-to-text converts spoken audio into written text. In ScribeFlow, Deepgram Nova-3 is planned for this job.
+Speech-to-text converts spoken audio into written text. In ScribeFlow Phase 3, uploaded recordings are transcribed by Deepgram Nova-3 from a short-lived private Supabase signed download URL.
 
 ## Speaker Diarisation
 
-Speaker diarisation answers "who spoke when?" It splits the transcript into speaker-labelled parts such as Speaker 0 and Speaker 1.
+Speaker diarisation answers "who spoke when?" It splits the transcript into speaker-labelled parts such as raw speaker 0 and raw speaker 1. ScribeFlow displays those as `Speaker 1`, `Speaker 2` and so on.
 
 ## Transcription vs Diarisation
 
 Transcription produces the words. Diarisation assigns those words or segments to speakers. A meeting system needs both to show a useful conversation transcript.
+
+## Speaker Number vs Identity
+
+Deepgram speaker indexes are not human identities. `Speaker 1` means the first diarised voice cluster, not a verified person. Users can rename speakers later, but ScribeFlow does not infer that a voice belongs to `YOU`, `PARTNER` or any real attendee.
+
+## Utterances and Word Timestamps
+
+Deepgram utterances are speaker-labelled spans of speech. Word timestamps record each word's start and end time. ScribeFlow stores both segment timing and word metadata so transcript rows, search snippets and speaking-time analytics can point back to source audio.
+
+## Keyterms
+
+Keyterms are short hints sent to Deepgram, such as project names or technical vocabulary. They can improve recognition of unusual words, but they do not identify speakers and they are not a substitute for the reference transcript.
 
 ## Structured Output
 
@@ -68,6 +80,10 @@ Row Level Security is a database protection layer that controls which rows a rol
 
 The audio bucket is private so uploaded recordings are not publicly readable. Future playback or download should use short-lived signed URLs created by the backend.
 
+## Signed Private Audio Access
+
+For transcription, the API creates a short-lived signed download URL for the private audio object and sends it directly to Deepgram. The browser never sees that URL, and the database never stores it.
+
 ## Public Keys vs Server Secret Keys
 
 Public browser keys are designed for limited frontend use. Server secret or service-role keys can bypass RLS and must stay on the backend. ScribeFlow prefers `SUPABASE_SECRET_KEY` and supports `SUPABASE_SERVICE_ROLE_KEY` only as a legacy fallback.
@@ -86,11 +102,11 @@ Large audio files do not need to be buffered by the Node API. The API creates th
 
 ## Vector Columns Before Embeddings
 
-The `meeting_chunks.embedding` column exists before embeddings are generated so the schema is ready for the RAG phase. In Phase 2 the values remain null, which is honest and avoids fake search behavior.
+The `meeting_chunks.embedding` column exists before embeddings are generated so the schema is ready for the RAG phase. In Phase 3 the values remain null, which is honest and avoids fake search behavior.
 
 ## Persistence vs AI Processing
 
-Database persistence means safely storing records and files. AI processing means using Deepgram or Gemini to create transcripts, summaries, action items and embeddings. Phase 2 implements persistence only.
+Database persistence means safely storing records and files. AI processing means using Deepgram or Gemini to create transcripts, summaries, action items and embeddings. Phase 2 implemented persistence and private uploads; Phase 3 adds Deepgram uploaded-audio transcription while Gemini summaries and embeddings remain later work.
 
 ## Snake Case vs Camel Case
 
@@ -146,3 +162,25 @@ upload progress.
 A unit test checks one boundary with doubles or fixtures. An integration test
 checks real systems working together, such as the API, Supabase database,
 private Storage and the TUS upload protocol.
+
+## Word Error Rate
+
+Word Error Rate compares a reference transcript with the provider transcript:
+substitutions plus deletions plus insertions divided by reference word count.
+The reference cleanup removes only non-spoken standalone title and speaker-label
+lines such as `YOU:` and `PARTNER:`. It does not rewrite spoken sentences to make
+the score look better.
+
+## Raw Provider JSON
+
+ScribeFlow stores normalized transcript segments, speakers and safe metadata
+instead of the complete raw Deepgram response. This keeps database records
+provider-neutral, avoids storing unnecessary account or request details, and
+makes frontend contracts stable.
+
+## Atomic Transcript Replacement
+
+The `replace_meeting_transcription` database function deletes old speakers and
+segments, inserts the new normalized transcript and marks the meeting
+`transcribed` in one transaction. That prevents a partially replaced transcript
+from being shown if a database write fails halfway through.

@@ -13,12 +13,17 @@ import type {
   meetingStatusSchema,
   meetingSummarySchema,
   meetingTopicSchema,
+  normalizedSpeakerSchema,
+  normalizedTranscriptSegmentSchema,
+  normalizedTranscriptionSchema,
   paginatedMeetingListSchema,
   paginationSchema,
   renameSpeakerInputSchema,
   searchInputSchema,
   searchResultSchema,
   startLiveMeetingInputSchema,
+  transcribeMeetingResponseSchema,
+  transcriptionSummarySchema,
   transcriptSegmentSchema,
   transcriptWordSchema,
   updateActionItemInputSchema,
@@ -36,6 +41,13 @@ export type Meeting = z.infer<typeof meetingSchema>;
 export type MeetingSpeaker = z.infer<typeof meetingSpeakerSchema>;
 export type TranscriptWord = z.infer<typeof transcriptWordSchema>;
 export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
+export type TranscriptionWord = z.infer<typeof transcriptWordSchema>;
+export type NormalizedTranscriptSegment = z.infer<
+  typeof normalizedTranscriptSegmentSchema
+>;
+export type NormalizedSpeaker = z.infer<typeof normalizedSpeakerSchema>;
+export type NormalizedTranscription = z.infer<typeof normalizedTranscriptionSchema>;
+export type TranscriptionSummary = z.infer<typeof transcriptionSummarySchema>;
 export type ActionItemStatus = z.infer<typeof actionItemStatusSchema>;
 export type ActionItem = z.infer<typeof actionItemSchema>;
 export type MeetingSummary = z.infer<typeof meetingSummarySchema>;
@@ -55,5 +67,6 @@ export type MeetingListQuery = z.infer<typeof meetingListQuerySchema>;
 export type Pagination = z.infer<typeof paginationSchema>;
 export type PaginatedMeetingList = z.infer<typeof paginatedMeetingListSchema>;
 export type MeetingDetail = z.infer<typeof meetingDetailSchema>;
+export type TranscribeMeetingResponse = z.infer<typeof transcribeMeetingResponseSchema>;
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 export type ApiErrorResponse = z.infer<typeof apiErrorResponseSchema>;

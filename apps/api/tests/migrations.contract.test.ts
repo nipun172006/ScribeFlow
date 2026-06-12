@@ -18,6 +18,14 @@ const storageSql = readFileSync(
   "utf8",
 ).toLowerCase();
 
+const transcriptionSql = readFileSync(
+  resolve(
+    process.cwd(),
+    "../../supabase/migrations/20260612120000_add_uploaded_audio_transcription.sql",
+  ),
+  "utf8",
+).toLowerCase();
+
 describe("Supabase migration contract", () => {
   it("creates required extensions and tables", () => {
     expect(schemaSql).toContain("create extension if not exists pgcrypto");
@@ -61,5 +69,28 @@ describe("Supabase migration contract", () => {
     expect(storageSql).toContain("video/mp4");
     expect(storageSql).toContain("application/ogg");
     expect(storageSql).not.toContain("create policy");
+  });
+
+  it("adds transcribed status and atomic transcription replacement RPC", () => {
+    expect(transcriptionSql).toContain("'transcribed'");
+    expect(transcriptionSql).toContain(
+      "create or replace function public.replace_meeting_transcription",
+    );
+    expect(transcriptionSql).toContain("delete from public.transcript_segments");
+    expect(transcriptionSql).toContain("delete from public.meeting_speakers");
+    expect(transcriptionSql).toContain("insert into public.meeting_speakers");
+    expect(transcriptionSql).toContain("insert into public.transcript_segments");
+    expect(transcriptionSql).toContain("v_current_status <> 'transcribing'");
+    expect(transcriptionSql).toContain("p_speakers contains invalid speaker records");
+    expect(transcriptionSql).toContain(
+      "p_segments contains invalid transcript segment records",
+    );
+    expect(transcriptionSql).toContain("status = 'transcribed'");
+    expect(transcriptionSql).toContain("'requestid'");
+    expect(transcriptionSql).toContain("'diarizemodel'");
+    expect(transcriptionSql).toContain("'wordcount'");
+    expect(transcriptionSql).toContain("set search_path = public, pg_temp");
+    expect(transcriptionSql).toContain("revoke all on function");
+    expect(transcriptionSql).not.toContain("create policy");
   });
 });

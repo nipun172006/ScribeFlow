@@ -4,11 +4,11 @@ ScribeFlow is a university GenAI project for a premium AI meeting-intelligence p
 
 ## Current Status
 
-This repository is in Phase 2. It contains the Phase 1 monorepo foundation plus a Supabase persistence foundation: SQL migrations, backend-only Supabase client creation, meeting CRUD, private audio bucket setup, signed resumable upload initialization, upload confirmation, and frontend data integration.
+This repository is in Phase 3. It contains the Phase 1 monorepo foundation, the Phase 2 Supabase persistence and private upload foundation, and Phase 3 uploaded-audio transcription through Deepgram Nova-3 with batch diarisation.
 
-Real Deepgram transcription, speaker diarisation provider calls, Gemini generation, embeddings, semantic search, live microphone recording and analytics calculations are not implemented yet. Uploading a recording stores meeting metadata, uploads audio directly to private Supabase Storage through TUS, verifies storage metadata, and leaves the meeting in `created` status for the next phase.
+Uploading a recording stores meeting metadata, uploads audio directly to private Supabase Storage through signed TUS, verifies storage metadata, then `POST /api/meetings/:meetingId/transcribe` creates a backend-only signed download URL, calls Deepgram with `diarize_model=latest`, normalizes speakers and transcript segments, and persists the meeting in `transcribed` status.
 
-The next controlled phase is uploaded-audio transcription and diarisation.
+Gemini summaries, action item extraction, embeddings, RAG search, live microphone streaming and cross-meeting analytics are still intentionally unimplemented. The next controlled phase is Gemini structured analysis.
 
 ## Repository Structure
 
@@ -21,7 +21,7 @@ packages/
 docs/       Product, architecture, data model and viva documentation
 supabase/
   config.toml
-  migrations/  Reviewed Phase 2 database and storage migrations
+  migrations/  Reviewed persistence, storage and transcription migrations
 ```
 
 ## Prerequisites
@@ -63,14 +63,29 @@ Supabase persistence:
 
 `SUPABASE_SECRET_KEY` takes precedence when both supported backend keys are present. The frontend only reads `VITE_API_BASE_URL`; it never receives Supabase secret keys or a Supabase browser client.
 
-Planned provider variables, still unused by real AI processing:
+Provider variables:
 
 - `DEEPGRAM_API_KEY`
 - `DEEPGRAM_MODEL`
+- `DEEPGRAM_DIARIZE_MODEL`
+- `DEEPGRAM_DEFAULT_LANGUAGE`
+- `DEEPGRAM_REQUEST_TIMEOUT_MS`
+- `DEEPGRAM_MAX_RETRIES`
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
 - `GEMINI_EMBEDDING_MODEL`
 - `GEMINI_EMBEDDING_DIMENSIONS`
+
+Deepgram is used only by the backend. No Deepgram key or signed Supabase download URL is sent to the browser.
+Gemini variables remain configured for later phases and are not called in Phase 3.
+
+Demo verification variables:
+
+- `DEMO_AUDIO_PATH`
+- `DEMO_REFERENCE_PATH`
+- `DEMO_EXPECTED_SPEAKERS`
+
+The demo verifier reads these ignored `.env` values locally and never commits or prints the referenced Desktop files.
 
 ## Supabase Setup
 
@@ -84,7 +99,7 @@ npm run db:types
 npm run supabase:stop
 ```
 
-The Phase 2 migrations create application tables with RLS enabled and no browser policies, plus a private `meeting-audio` bucket. Audio objects must not use public URLs. Future download access should use short-lived signed URLs from the API.
+The migrations create application tables with RLS enabled and no browser policies, plus a private `meeting-audio` bucket. Audio objects must not use public URLs. Phase 3 transcription uses short-lived signed download URLs inside the API process only.
 
 If Docker is unavailable, review and apply the migrations against a Supabase cloud project before using upload persistence.
 
@@ -102,6 +117,8 @@ npx supabase gen types typescript --linked --schema public > apps/api/src/types/
 npm run build --workspace @scribeflow/api
 npm run start --workspace @scribeflow/api
 npm run verify:supabase-cloud
+npm run verify:deepgram
+npm run evaluate:wer -- --reference <path> --hypothesis <path>
 ```
 
 `npm run verify:supabase-cloud` is an opt-in integration verifier for a real
@@ -111,6 +128,16 @@ detail APIs, verifies public storage access is rejected, and verifies a
 server-authorized signed download without printing signed tokens or signed URLs.
 This checkpoint has been verified against Supabase Cloud with the signed TUS
 endpoint.
+
+`npm run verify:deepgram` is an opt-in integration verifier for a real running
+API, Supabase project and Deepgram key. It reads `DEMO_AUDIO_PATH`,
+`DEMO_REFERENCE_PATH` and `DEMO_EXPECTED_SPEAKERS` from `.env`, uploads the demo
+audio through signed TUS, confirms the upload, runs `/api/meetings/:id/transcribe`,
+checks persisted speakers and transcript segments, computes WER, and cleans up
+failed verification rows. A successful run intentionally retains at most one
+verification meeting so the frontend transcript, speaker rename and analytics
+views can be inspected with real data. It does not print secrets, signed upload
+tokens or signed download URLs.
 
 ## Development Commands
 
@@ -142,6 +169,10 @@ Implemented in Phase 2:
 - `PATCH /api/meetings/:meetingId/speakers/:speakerId`
 - `PATCH /api/action-items/:actionItemId`
 
+Implemented in Phase 3:
+
+- `POST /api/meetings/:meetingId/transcribe`
+
 Still intentionally unimplemented with typed `501` errors:
 
 - `POST /api/search`
@@ -167,12 +198,26 @@ TUS endpoint, `/storage/v1/upload/resumable`, is for user-session uploads with a
 `Authorization: Bearer <user access token>` header and is not used in this
 single-workspace backend-authorized phase.
 
+## Transcription Architecture
+
+```text
+Processing page
+  -> API checks meeting state and Deepgram configuration
+  -> API creates a short-lived signed download URL for private audio
+  -> API calls Deepgram Nova-3 with diarize_model=latest
+  -> API normalizes utterances, words, speakers and timing
+  -> API atomically replaces speakers/transcript segments
+  -> API marks meeting transcribed
+```
+
+Deepgram failures return explicit API errors and can mark the meeting failed with a safe message. The app never silently replaces failed transcription with fixtures.
+
 ## Frontend Routes
 
 - `/` dashboard with real recent-meeting loading
 - `/meetings/new` upload and live metadata creation
 - `/meetings/:meetingId/processing` status-aware processing page
-- `/meetings/:meetingId` meeting detail from persisted API data
+- `/meetings/:meetingId` meeting detail with persisted transcript, speaker rename controls and meeting-level speaker timing
 - `/archive` paginated persisted meeting archive
 - `/search` global search shell
 - `/analytics` analytics shell
@@ -181,10 +226,8 @@ Unknown routes render a designed not-found state.
 
 ## Known Unfinished Features
 
-- Deepgram upload transcription.
 - Deepgram live transcription.
 - Gemini summaries, action items and embeddings.
-- Transcript normalization from provider output.
 - Semantic/hybrid RAG retrieval.
 - Cross-meeting analytics calculations.
 - Authentication.

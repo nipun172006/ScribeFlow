@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   BarChart3,
   CheckSquare,
@@ -9,6 +10,7 @@ import {
   ListChecks,
   MessageSquareText,
   Save,
+  Search,
   UsersRound,
 } from "lucide-react";
 import type { ActionItem, MeetingDetail, MeetingSpeaker } from "@scribeflow/shared";
@@ -16,6 +18,7 @@ import { ActionItemRow } from "../components/ActionItemRow";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
+import { MetricCard } from "../components/MetricCard";
 import { PageHeader } from "../components/PageHeader";
 import { SpeakerBadge } from "../components/SpeakerBadge";
 import { StatusBadge } from "../components/StatusBadge";
@@ -46,6 +49,8 @@ const summarySections = [
 export function MeetingDetailPage() {
   const { meetingId } = useParams();
   const queryClient = useQueryClient();
+  const [transcriptQuery, setTranscriptQuery] = useState("");
+  const [speakerFilter, setSpeakerFilter] = useState("");
   const meetingQuery = useQuery({
     queryKey: ["meeting-detail", meetingId],
     queryFn: () => getMeetingDetail(meetingId ?? ""),
@@ -71,12 +76,63 @@ export function MeetingDetailPage() {
 
   const detail = meetingQuery.data;
   const meeting = detail?.meeting;
-  const speakersById = new Map(
-    detail?.speakers.map((speaker) => [speaker.id, speaker]),
+  const speakers = useMemo(() => detail?.speakers ?? [], [detail?.speakers]);
+  const speakersById = useMemo(
+    () => new Map(speakers.map((speaker) => [speaker.id, speaker])),
+    [speakers],
   );
-  const speakersByRawIndex = new Map(
-    detail?.speakers.map((speaker) => [speaker.rawSpeakerIndex, speaker]),
+  const speakersByRawIndex = useMemo(
+    () => new Map(speakers.map((speaker) => [speaker.rawSpeakerIndex, speaker])),
+    [speakers],
   );
+  const getSegmentSpeaker = useCallback(
+    (segment: MeetingDetail["transcriptSegments"][number]) =>
+      (segment.speakerId ? speakersById.get(segment.speakerId) : null) ??
+      (segment.rawSpeakerIndex != null
+        ? speakersByRawIndex.get(segment.rawSpeakerIndex)
+        : null),
+    [speakersById, speakersByRawIndex],
+  );
+  const filteredSegments = useMemo(() => {
+    const normalizedQuery = transcriptQuery.trim().toLocaleLowerCase();
+
+    return (detail?.transcriptSegments ?? []).filter((segment) => {
+      const speaker = getSegmentSpeaker(segment);
+      const matchesQuery =
+        !normalizedQuery ||
+        segment.text.toLocaleLowerCase().includes(normalizedQuery) ||
+        speaker?.displayName.toLocaleLowerCase().includes(normalizedQuery);
+      const matchesSpeaker =
+        !speakerFilter ||
+        segment.speakerId === speakerFilter ||
+        (segment.rawSpeakerIndex != null &&
+          String(segment.rawSpeakerIndex) === speakerFilter);
+
+      return matchesQuery && matchesSpeaker;
+    });
+  }, [detail?.transcriptSegments, getSegmentSpeaker, speakerFilter, transcriptQuery]);
+  const speakerAnalytics = useMemo(
+    () =>
+      (detail?.speakers ?? []).map((speaker) => ({
+        name: speaker.displayName,
+        seconds: speaker.totalSpeakingSeconds,
+        percentage: speaker.speakingPercentage,
+      })),
+    [detail?.speakers],
+  );
+  const totalDetectedSpeakingSeconds = speakerAnalytics.reduce(
+    (sum, speaker) => sum + speaker.seconds,
+    0,
+  );
+  const dominantSpeaker = speakerAnalytics.reduce<
+    (typeof speakerAnalytics)[number] | null
+  >(
+    (current, speaker) =>
+      !current || speaker.percentage > current.percentage ? speaker : current,
+    null,
+  );
+  const canRenderResponsiveChart =
+    typeof window !== "undefined" && "ResizeObserver" in window;
 
   return (
     <div className="space-y-8">
@@ -202,25 +258,61 @@ export function MeetingDetailPage() {
 
             <Tabs.Content value="transcript" className="space-y-3">
               {detail.transcriptSegments.length > 0 ? (
-                detail.transcriptSegments.map((segment) => {
-                  const speaker =
-                    (segment.speakerId ? speakersById.get(segment.speakerId) : null) ??
-                    (segment.rawSpeakerIndex != null
-                      ? speakersByRawIndex.get(segment.rawSpeakerIndex)
-                      : null);
-                  return (
-                    <TranscriptSegmentRow
-                      key={segment.id}
-                      segment={segment}
-                      speakerName={speaker?.displayName ?? "Unknown speaker"}
+                <>
+                  <section className="grid gap-3 rounded-card border border-border bg-surface p-4 md:grid-cols-[1fr_14rem]">
+                    <label className="block">
+                      <span className="sf-label flex items-center gap-2">
+                        <Search size={16} aria-hidden="true" />
+                        Search transcript
+                      </span>
+                      <input
+                        className="sf-field mt-2"
+                        value={transcriptQuery}
+                        onChange={(event) => setTranscriptQuery(event.target.value)}
+                        placeholder="Search spoken content or speaker names"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="sf-label">Speaker</span>
+                      <select
+                        className="sf-field mt-2"
+                        value={speakerFilter}
+                        onChange={(event) => setSpeakerFilter(event.target.value)}
+                      >
+                        <option value="">All speakers</option>
+                        {detail.speakers.map((speaker) => (
+                          <option key={speaker.id} value={speaker.id}>
+                            {speaker.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </section>
+
+                  {filteredSegments.length > 0 ? (
+                    filteredSegments.map((segment) => {
+                      const speaker = getSegmentSpeaker(segment);
+                      return (
+                        <TranscriptSegmentRow
+                          key={segment.id}
+                          segment={segment}
+                          speakerName={speaker?.displayName ?? "Unknown speaker"}
+                        />
+                      );
+                    })
+                  ) : (
+                    <EmptyState
+                      icon={<MessageSquareText size={20} aria-hidden="true" />}
+                      title="No matching transcript segments"
+                      message="Clear the search query or speaker filter to return to the full persisted transcript."
                     />
-                  );
-                })
+                  )}
+                </>
               ) : (
                 <EmptyState
                   icon={<MessageSquareText size={20} aria-hidden="true" />}
                   title="Transcript unavailable"
-                  message="No transcript segments are stored yet. Uploaded-audio transcription remains the next implementation phase."
+                  message="No transcript segments are stored yet. Use the processing page to run uploaded-audio transcription after the recording is uploaded."
                 />
               )}
             </Tabs.Content>
@@ -253,11 +345,129 @@ export function MeetingDetailPage() {
             </Tabs.Content>
 
             <Tabs.Content value="analytics">
-              <EmptyState
-                icon={<UsersRound size={20} aria-hidden="true" />}
-                title="No analytics yet"
-                message={`Persisted speakers: ${detail.speakers.length}. Transcript chunks indexed for future RAG: ${detail.chunkCount}. Cross-meeting analytics remain a later phase.`}
-              />
+              {speakerAnalytics.length > 0 ? (
+                <section className="space-y-5 rounded-card border border-border bg-surface p-5">
+                  <div>
+                    <h2 className="text-base font-semibold text-primary">
+                      Speaking-time distribution
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-muted">
+                      Calculated deterministically from persisted Deepgram word
+                      timestamps. Cross-meeting analytics remain a later phase.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <MetricCard
+                      label="Speaker count"
+                      value={String(detail.speakers.length)}
+                      detail="Persisted diarised speaker records"
+                      icon={<UsersRound size={18} aria-hidden="true" />}
+                    />
+                    <MetricCard
+                      label="Detected spoken time"
+                      value={`${totalDetectedSpeakingSeconds.toFixed(1)} seconds`}
+                      detail="Sum of speaker word durations"
+                      icon={<BarChart3 size={18} aria-hidden="true" />}
+                    />
+                    <MetricCard
+                      label="Dominant speaker"
+                      value={dominantSpeaker?.name ?? "-"}
+                      detail={
+                        dominantSpeaker
+                          ? `${dominantSpeaker.percentage.toFixed(1)}% of detected speech`
+                          : "No speaker timing stored"
+                      }
+                      icon={<UsersRound size={18} aria-hidden="true" />}
+                    />
+                  </div>
+                  {canRenderResponsiveChart ? (
+                    <div className="h-72 w-full">
+                      <ResponsiveContainer minWidth={320} minHeight={240}>
+                        <BarChart data={speakerAnalytics}>
+                          <XAxis
+                            dataKey="name"
+                            tick={{ fill: "currentColor", fontSize: 12 }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            tick={{ fill: "currentColor", fontSize: 12 }}
+                            axisLine={false}
+                            tickLine={false}
+                            width={48}
+                          />
+                          <Tooltip
+                            cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                            contentStyle={{
+                              background: "#111827",
+                              border: "1px solid rgba(255,255,255,0.14)",
+                              borderRadius: 8,
+                              color: "#f9fafb",
+                            }}
+                          />
+                          <Bar dataKey="seconds" fill="#67e8f9" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="space-y-3" aria-label="Speaking-time chart">
+                      {speakerAnalytics.map((speaker) => (
+                        <div key={speaker.name}>
+                          <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+                            <span className="font-medium text-primary">
+                              {speaker.name}
+                            </span>
+                            <span className="text-muted">
+                              {speaker.percentage.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-background">
+                            <div
+                              className="h-2 rounded-full bg-accent"
+                              style={{
+                                width: `${Math.min(
+                                  Math.max(speaker.percentage, 0),
+                                  100,
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="text-muted">
+                        <tr>
+                          <th className="py-2 font-medium">Speaker</th>
+                          <th className="py-2 font-medium">Speaking time</th>
+                          <th className="py-2 font-medium">Share</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {detail.speakers.map((speaker) => (
+                          <tr key={speaker.id}>
+                            <td className="py-3 text-primary">{speaker.displayName}</td>
+                            <td className="py-3 text-muted">
+                              {formatDuration(speaker.totalSpeakingSeconds)}
+                            </td>
+                            <td className="py-3 text-muted">
+                              {speaker.speakingPercentage.toFixed(1)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : (
+                <EmptyState
+                  icon={<UsersRound size={20} aria-hidden="true" />}
+                  title="No speaker analytics yet"
+                  message={`Persisted speakers: ${detail.speakers.length}. Transcript chunks indexed for future RAG: ${detail.chunkCount}. Run uploaded-audio transcription to populate speaker timing.`}
+                />
+              )}
             </Tabs.Content>
           </Tabs.Root>
         </>
@@ -328,10 +538,14 @@ function SpeakerRenameRow({
 }) {
   const [displayName, setDisplayName] = useState(speaker.displayName);
 
+  useEffect(() => {
+    setDisplayName(speaker.displayName);
+  }, [speaker.displayName]);
+
   return (
     <div className="rounded-card border border-border bg-background/60 p-4">
       <div className="flex items-center justify-between gap-3">
-        <SpeakerBadge name={`Speaker ${speaker.rawSpeakerIndex}`} />
+        <SpeakerBadge name={speaker.displayName} />
         <span className="text-sm text-muted">
           {speaker.speakingPercentage.toFixed(1)}%
         </span>
@@ -341,7 +555,7 @@ function SpeakerRenameRow({
           value={displayName}
           onChange={(event) => setDisplayName(event.target.value)}
           className="sf-field"
-          aria-label={`Display name for speaker ${speaker.rawSpeakerIndex}`}
+          aria-label={`Display name for ${speaker.displayName}`}
         />
         <button
           type="button"

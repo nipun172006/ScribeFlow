@@ -448,7 +448,7 @@ export function NewMeetingPage() {
             <EmptyState
               icon={<Info size={20} aria-hidden="true" />}
               title="Live recording is not implemented yet"
-              message="The API persists live-meeting metadata only. Microphone capture, live streaming and Deepgram sessions remain Phase 3+ work."
+              message="The API persists live-meeting metadata only. Microphone capture, live streaming and Deepgram sessions remain future phase work."
             />
           </section>
         </Tabs.Content>

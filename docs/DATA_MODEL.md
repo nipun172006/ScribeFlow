@@ -2,7 +2,7 @@
 
 Transport-layer dates are ISO 8601 strings in the API. Database dates use `timestamptz`. Database rows use `snake_case`; API responses map them to shared camelCase domain objects.
 
-Phase 2 includes SQL migrations for all planned persistence tables, but AI-generated rows such as summaries, transcript segments, topics, chunks and action items are inserted only in later phases.
+Phase 3 includes SQL migrations for all planned persistence tables plus uploaded-audio transcription persistence. Deepgram now writes `meeting_speakers` and `transcript_segments`; summaries, topics, chunks and action items are still inserted only in later phases.
 
 ## Shared Rules
 
@@ -15,16 +15,16 @@ Phase 2 includes SQL migrations for all planned persistence tables, but AI-gener
 
 ## `meetings`
 
-Stores the persisted meeting record and upload metadata.
+Stores the persisted meeting record, upload metadata and processing state.
 
 Key columns: `id`, `title`, `source_type`, `status`, `original_file_name`, `storage_bucket`, `storage_path`, `mime_type`, `expected_file_size_bytes`, `file_size_bytes`, `duration_seconds`, `language`, `recorded_at`, `processing_started_at`, `upload_completed_at`, `completed_at`, `processing_time_ms`, `known_participants`, `technical_terms`, `error_code`, `error_message`, `metadata`, `created_at`, `updated_at`.
 
-Constraints: non-empty title, checked `source_type`, checked `status`, non-negative sizes/durations/processing time, storage bucket/path pair consistency, JSON object metadata, unique non-null `(storage_bucket, storage_path)`.
+Constraints: non-empty title, checked `source_type`, checked `status` including `transcribed`, non-negative sizes/durations/processing time, storage bucket/path pair consistency, JSON object metadata, unique non-null `(storage_bucket, storage_path)`.
 
 Indexes: `created_at desc`, `recorded_at desc`, `status`, `source_type`, `(status, created_at desc)`, unique partial storage object index.
 
 Deterministic fields: status transitions, storage metadata, byte counts, upload/completion timestamps, processing time.  
-AI-generated fields later: `duration_seconds`, detected `language`, error fields from provider failures.  
+AI/provider-generated fields now: Deepgram duration and detected language after transcription. Error fields may store safe provider failure messages.
 User-editable fields now or later: `title`, `recorded_at`, `known_participants`, `technical_terms`.
 
 ## `meeting_speakers`
@@ -39,8 +39,8 @@ Constraints: non-negative raw speaker index, non-blank display name, non-negativ
 
 Indexes: `meeting_id`, `(meeting_id, raw_speaker_index)`.
 
-Deterministic fields: speaking totals and percentages.  
-AI-generated fields later: initial raw speaker grouping from diarisation.  
+Deterministic fields: speaking totals and percentages from word timestamps.
+AI/provider-generated fields now: initial raw speaker grouping from Deepgram diarisation.
 User-editable fields: `display_name`.
 
 ## `transcript_segments`
@@ -55,9 +55,9 @@ Constraints: non-negative segment index and start time, `end_ms >= start_ms`, ra
 
 Indexes: `(meeting_id, segment_index)`, `(meeting_id, start_ms)`, `speaker_id`, GIN on `search_vector`.
 
-AI-generated fields later: text, confidence, word metadata, speaker labels.  
+AI/provider-generated fields now: text, confidence, word metadata, speaker labels.
 Deterministic fields: segment index after normalization, generated search vector.  
-User-editable fields: none in Phase 2.
+User-editable fields: none in Phase 3.
 
 ## `meeting_summaries`
 
@@ -71,7 +71,7 @@ Constraints: JSON arrays for attendees, decisions, discussion points, open quest
 
 AI-generated fields later: all summary content and model name.  
 Deterministic fields: schema version and timestamps.  
-User-editable fields: none in Phase 2.
+User-editable fields: none in Phase 3.
 
 ## `action_items`
 
@@ -87,7 +87,7 @@ Indexes: `(meeting_id, status)`, `owner_speaker_id`, `deadline`, `source_segment
 
 AI-generated fields later: task, owner, deadline, confidence, evidence.  
 Deterministic fields: status, `completed_at`, timestamps.  
-User-editable fields in Phase 2: `status` only.
+User-editable fields in Phase 3: `status` only.
 
 ## `meeting_topics`
 
@@ -103,11 +103,11 @@ Indexes: case-insensitive unique index on `(meeting_id, lower(normalized_label))
 
 AI-generated fields later: labels, confidence, mention count.  
 Deterministic fields: lowercase normalization by application logic, timestamps.  
-User-editable fields: none in Phase 2.
+User-editable fields: none in Phase 3.
 
 ## `meeting_chunks`
 
-Stores future RAG chunks and vector embeddings. Embeddings remain null during Phase 2.
+Stores future RAG chunks and vector embeddings. Embeddings remain null during Phase 3.
 
 Columns: `id`, `meeting_id`, `chunk_index`, `content`, `start_ms`, `end_ms`, `speaker_names`, `metadata`, `embedding extensions.vector(768)`, `embedding_model`, generated `search_vector`, `created_at`.
 
@@ -119,7 +119,18 @@ Indexes: `(meeting_id, chunk_index)`, `(meeting_id, start_ms)`, GIN on `search_v
 
 AI-generated fields later: content chunks, embedding, embedding model.  
 Deterministic fields: chunk order, source span, search vector.  
-User-editable fields: none in Phase 2.
+User-editable fields: none in Phase 3.
+
+## Transcription RPC
+
+Migration `20260612120000_add_uploaded_audio_transcription.sql` adds:
+
+- `transcribed` as a valid meeting status.
+- `public.replace_meeting_transcription(...)`, a backend-only RPC that atomically replaces `meeting_speakers` and `transcript_segments`, stores safe Deepgram metadata under `meetings.metadata.transcription`, clears safe error fields and marks the meeting `transcribed`.
+
+Safe transcription metadata includes provider, request ID, model, diarisation model, language, duration, word count, speaker count, segment count, aggregate confidence, processing time and transcription timestamp. It never stores API keys, signed URLs, authorization headers or the raw provider response.
+
+The API calls this RPC after normalizing Deepgram output. Controllers do not write raw Supabase rows directly.
 
 ## Private Storage Bucket
 

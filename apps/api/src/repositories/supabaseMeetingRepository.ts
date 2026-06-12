@@ -6,17 +6,19 @@ import type {
   MeetingListQuery,
   MeetingSpeaker,
   PaginatedMeetingList,
+  TranscribeMeetingResponse,
 } from "@scribeflow/shared";
 import { ApiError } from "../errors/apiError.js";
 import type { MeetingRepository } from "../services/interfaces.js";
 import type { ScribeFlowSupabaseClient } from "../config/supabaseClient.js";
-import type { Database } from "../types/database.types.js";
+import type { Database, Json } from "../types/database.types.js";
 import {
   mapActionItem,
   mapMeeting,
   mapMeetingDetail,
   mapMeetingSpeaker,
 } from "./mappers.js";
+import { buildTranscribeMeetingResponse } from "../services/transcriptionResponse.js";
 
 type MeetingInsert = Database["public"]["Tables"]["meetings"]["Insert"];
 
@@ -139,6 +141,91 @@ export class SupabaseMeetingRepository implements MeetingRepository {
     }
 
     return mapMeeting(data);
+  }
+
+  async markTranscriptionStarted(meetingId: string): Promise<Meeting> {
+    const { data, error } = await this.client
+      .from("meetings")
+      .update({
+        status: "transcribing",
+        processing_started_at: new Date().toISOString(),
+        error_code: null,
+        error_message: null,
+      })
+      .eq("id", meetingId)
+      .in("status", ["created", "failed"])
+      .select("*")
+      .maybeSingle();
+
+    if (error && !isMissingRowError(error)) {
+      throw ApiError.databaseOperationFailed(
+        "Could not mark transcription as started.",
+      );
+    }
+
+    if (!data) {
+      throw ApiError.conflict(
+        "TRANSCRIPTION_ALREADY_RUNNING",
+        "This meeting is already being transcribed or is not ready to transcribe.",
+      );
+    }
+
+    return mapMeeting(data);
+  }
+
+  async replaceMeetingTranscription(
+    input: Parameters<MeetingRepository["replaceMeetingTranscription"]>[0],
+  ): Promise<TranscribeMeetingResponse> {
+    const speakers = input.transcription.speakers.map((speaker) => ({
+      raw_speaker_index: speaker.rawSpeakerIndex,
+      display_name: speaker.displayName,
+      total_speaking_seconds: speaker.totalSpeakingSeconds,
+      speaking_percentage: speaker.speakingPercentage,
+    }));
+    const segments = input.transcription.segments.map((segment) => ({
+      raw_speaker_index: segment.rawSpeakerIndex,
+      segment_index: segment.segmentIndex,
+      start_ms: segment.startMs,
+      end_ms: segment.endMs,
+      text: segment.text,
+      confidence: segment.confidence,
+      words: segment.words as unknown as Json,
+    }));
+
+    const { error } = await this.client.rpc("replace_meeting_transcription", {
+      p_meeting_id: input.meetingId,
+      p_duration_seconds: input.transcription.durationSeconds ?? 0,
+      p_language: input.transcription.language ?? "",
+      p_model_name: input.transcription.modelName ?? "unknown",
+      p_provider_request_id: input.transcription.providerRequestId ?? "",
+      p_diarize_model: input.transcription.diarizeModel,
+      p_confidence: input.transcription.confidence ?? 0,
+      p_word_count: input.transcription.wordCount,
+      p_speaker_count: input.transcription.speakers.length,
+      p_segment_count: input.transcription.segments.length,
+      p_speakers: speakers as unknown as Json,
+      p_segments: segments as unknown as Json,
+      p_processing_started_at: input.processingStartedAt,
+      p_processing_time_ms: input.processingTimeMs,
+    });
+
+    if (error) {
+      throw ApiError.transcriptPersistenceFailed();
+    }
+
+    const detail = await this.getMeetingDetail(input.meetingId);
+    if (!detail) {
+      throw ApiError.databaseOperationFailed(
+        "Transcription was saved but the meeting could not be reloaded.",
+      );
+    }
+
+    return buildTranscribeMeetingResponse({
+      detail,
+      alreadyTranscribed: false,
+      transcription: input.transcription,
+      processingTimeMs: input.processingTimeMs,
+    });
   }
 
   async listMeetings(query: MeetingListQuery): Promise<PaginatedMeetingList> {

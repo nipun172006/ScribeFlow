@@ -8,6 +8,11 @@ const optionalSecretSchema = z.preprocess(
   z.string().min(1).optional(),
 );
 
+const optionalDefaultLanguageSchema = z.preprocess(
+  emptyStringToUndefined,
+  z.string().trim().min(1).max(24).default("en"),
+);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(8787),
@@ -15,6 +20,15 @@ const envSchema = z.object({
   LOG_LEVEL: z.string().min(1).default("info"),
   DEEPGRAM_API_KEY: optionalSecretSchema,
   DEEPGRAM_MODEL: z.string().min(1).default("nova-3"),
+  DEEPGRAM_DIARIZE_MODEL: z.string().min(1).default("latest"),
+  DEEPGRAM_DEFAULT_LANGUAGE: optionalDefaultLanguageSchema,
+  DEEPGRAM_REQUEST_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(120_000)
+    .default(115_000),
+  DEEPGRAM_MAX_RETRIES: z.coerce.number().int().min(0).max(3).default(1),
   GEMINI_API_KEY: optionalSecretSchema,
   GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash"),
   GEMINI_EMBEDDING_MODEL: z.string().min(1).default("gemini-embedding-2"),

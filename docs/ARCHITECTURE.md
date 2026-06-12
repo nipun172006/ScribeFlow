@@ -25,7 +25,7 @@ flowchart LR
 
 - Web app: presentation, form state, route state and friendly API errors.
 - API controllers: HTTP request validation and response shaping.
-- Services: provider-facing business boundaries.
+- Services: provider-facing business boundaries, including Deepgram uploaded-audio transcription.
 - Repositories: database access and deterministic analytics queries.
 - Storage service: signed resumable upload tokens, object metadata checks, cleanup and future signed read URLs.
 - Shared package: transport-safe schemas and inferred types.
@@ -97,7 +97,7 @@ short-lived path-scoped token and never receives the Supabase server secret.
 The cloud verifier has confirmed signed upload, private public-access rejection,
 signed server-authorized retrieval, and persisted meeting list/detail reads.
 
-## Planned AI Data Flow After Upload
+## Phase 3 Uploaded-Audio Transcription Flow
 
 ```mermaid
 sequenceDiagram
@@ -106,19 +106,36 @@ sequenceDiagram
   participant API
   participant Storage
   participant Deepgram
+  participant Database
+
+  User->>Web: Open processing page for uploaded meeting
+  Web->>API: POST /api/meetings/:id/transcribe
+  API->>Database: Check state, mark status transcribing
+  API->>Storage: Create short-lived signed download URL
+  API->>Deepgram: Transcribe URL with Nova-3 and diarize_model=latest
+  API->>API: Normalize utterances, words and speaker timing
+  API->>Database: replace_meeting_transcription RPC
+  API->>Database: status transcribed, speakers, segments
+  Web->>API: Fetch meeting detail
+```
+
+The signed download URL stays in the API process and is never returned to the browser. The endpoint is idempotent: if a meeting is already `transcribed` and has transcript rows, the API returns persisted transcript data without calling Deepgram again. A meeting in `transcribing` returns `409 TRANSCRIPTION_ALREADY_RUNNING`; a meeting still in `uploading` returns `409 UPLOAD_NOT_COMPLETE`.
+
+Migration `20260612120000_add_uploaded_audio_transcription.sql` adds the `transcribed` status and `public.replace_meeting_transcription(...)`. The function deletes old speaker/segment rows and inserts the normalized replacement in one transaction, then marks the meeting `transcribed` and stores only safe provider metadata such as request ID, model, diarisation model, counts, confidence and processing time.
+
+## Planned Gemini and RAG Flow After Transcription
+
+```mermaid
+sequenceDiagram
+  participant API
   participant Gemini
   participant Database
 
-  User->>Web: Open uploaded meeting
-  Web->>API: Future worker trigger
-  API->>Storage: Read private audio through backend credentials
-  API->>Deepgram: Transcribe with diarisation
-  API->>Database: Persist meeting, speakers, segments
-  API->>Gemini: Generate summary and action items
+  API->>Database: Read persisted transcript and speakers
+  API->>Gemini: Generate structured summary and action items
   API->>Database: Persist summary, topics, tasks
-  API->>Gemini: Generate embeddings for chunks
+  API->>Gemini: Generate embeddings for transcript chunks
   API->>Database: Store vectors in pgvector
-  Web->>API: Fetch meeting detail
 ```
 
 ## Planned Live Meeting Data Flow
@@ -140,12 +157,14 @@ sequenceDiagram
 
 ## Transcription and Diarisation Strategy
 
-- Use Deepgram Nova-3 for speech-to-text.
-- Enable Deepgram speaker diarisation so transcript words include speaker labels.
-- Normalize provider output into `transcript_segments`.
+- Use Deepgram Nova-3 for uploaded-audio speech-to-text.
+- Enable current Deepgram batch diarisation with `diarize_model=latest`; do not send the deprecated `diarize=true` parameter alongside it.
+- Normalize provider utterances and words into `transcript_segments`.
 - Preserve word timing metadata where available.
 - Create `meeting_speakers` from raw diarisation labels.
 - Allow users to rename display names without mutating raw speaker indexes.
+- Compute speaker duration and percentage deterministically from word timestamps.
+- Measure WER against the supplied reference transcript by removing only standalone non-spoken title and speaker-label lines in memory.
 
 ## Summary and Action-Extraction Strategy
 
@@ -166,7 +185,7 @@ Transcript chunking is needed because full meeting transcripts can exceed model 
 
 ## Analytics Computation Strategy
 
-Speaking time, participant count, action item count, completion rate and topic counts should be deterministic database calculations. An LLM should not estimate these values because the source records already contain exact timestamps and statuses. Deterministic calculations are reproducible, debuggable and easier to explain in a viva.
+Speaking time, participant count, action item count, completion rate and topic counts should be deterministic calculations. Phase 3 calculates meeting-level speaking time from Deepgram word timestamps and stores totals on `meeting_speakers`. An LLM should not estimate these values because the source records already contain exact timestamps and statuses. Deterministic calculations are reproducible, debuggable and easier to explain in a viva.
 
 ## Security Boundaries
 
@@ -174,9 +193,10 @@ Speaking time, participant count, action item count, completion rate and topic c
 - Only `VITE_API_BASE_URL` is exposed to the browser.
 - Server secrets are loaded from environment variables.
 - Health checks report only boolean configuration flags.
+- Deepgram keys stay backend-only; the browser never receives Deepgram credentials.
 - `SUPABASE_SECRET_KEY` is preferred; `SUPABASE_SERVICE_ROLE_KEY` is a legacy fallback.
 - Supabase backend-key access stays in the API.
-- RLS is enabled on all application tables with no `anon` or `authenticated` policies in Phase 2.
+- RLS is enabled on all application tables with no `anon` or `authenticated` policies.
 - The `meeting-audio` bucket is private and has no anonymous storage policies.
 - Pino redacts authorization headers, `x-signature` values and signed upload tokens.
 - Future authentication can be added at the API boundary without changing provider boundaries.
@@ -190,7 +210,7 @@ Speaking time, participant count, action item count, completion rate and topic c
 {
   "error": {
     "code": "FEATURE_NOT_IMPLEMENTED",
-    "message": "Meeting transcription is not connected yet.",
+    "message": "Transcript and summary search are not indexed yet.",
     "requestId": "..."
   }
 }

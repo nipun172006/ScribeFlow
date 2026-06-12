@@ -36,7 +36,7 @@ export function DashboardPage() {
       <PageHeader
         eyebrow="Workspace"
         title="Meeting intelligence, ready for real processing"
-        description="Start from an uploaded recording or a future live meeting session. Phase 1 keeps the workspace honest: no generated summaries appear until provider integrations are connected."
+        description="Start from an uploaded recording or a future live meeting session. Deepgram transcription is connected; generated summaries and action extraction remain future Gemini work."
         actions={
           <Link
             to="/meetings/new"

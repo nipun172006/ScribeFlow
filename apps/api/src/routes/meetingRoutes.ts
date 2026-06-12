@@ -21,6 +21,7 @@ import {
   isAllowedMimeType,
   normalizeList,
 } from "../services/audioValidation.js";
+import { buildTranscribeMeetingResponse } from "../services/transcriptionResponse.js";
 
 const meetingIdParamsSchema = z.object({
   meetingId: uuidSchema,
@@ -254,6 +255,125 @@ export function createMeetingRoutes(dependencies: ApiDependencies) {
         const query = res.locals.query as z.infer<typeof meetingListQuerySchema>;
         const meetings = await dependencies.getMeetingRepository().listMeetings(query);
         res.json(meetings);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/meetings/:meetingId/transcribe",
+    validateRequest({ params: meetingIdParamsSchema }),
+    async (_req, res, next) => {
+      try {
+        const params = res.locals.params as { meetingId: string };
+        const repository = dependencies.getMeetingRepository();
+        const storage = dependencies.getStorageService();
+        const transcriptionService = dependencies.getTranscriptionService();
+        const detail = await repository.getMeetingDetail(params.meetingId);
+
+        if (!detail) {
+          throw ApiError.meetingNotFound();
+        }
+
+        const { meeting } = detail;
+
+        if (meeting.status === "transcribed" && detail.transcriptSegments.length > 0) {
+          res.json(
+            buildTranscribeMeetingResponse({
+              detail,
+              alreadyTranscribed: true,
+            }),
+          );
+          return;
+        }
+
+        if (meeting.status === "transcribing") {
+          throw ApiError.conflict(
+            "TRANSCRIPTION_ALREADY_RUNNING",
+            "This meeting is already being transcribed.",
+          );
+        }
+
+        if (meeting.status === "uploading") {
+          throw ApiError.conflict(
+            "UPLOAD_NOT_COMPLETE",
+            "The recording upload has not been verified yet.",
+          );
+        }
+
+        if (
+          meeting.sourceType !== "upload" ||
+          !meeting.storageBucket ||
+          !meeting.storagePath
+        ) {
+          throw ApiError.audioStorageMissing();
+        }
+
+        if (!["created", "failed"].includes(meeting.status)) {
+          throw ApiError.conflict(
+            "INVALID_MEETING_STATE",
+            "This meeting is not ready for uploaded-audio transcription.",
+          );
+        }
+
+        if (!transcriptionService.isConfigured()) {
+          throw ApiError.deepgramNotConfigured();
+        }
+
+        const processingStartedAt = new Date().toISOString();
+        const processingStartedMs = Date.now();
+        await repository.markTranscriptionStarted(meeting.id);
+
+        try {
+          let audioUrl: string;
+          try {
+            audioUrl = await storage.createSignedDownloadUrl({
+              bucket: meeting.storageBucket,
+              objectPath: meeting.storagePath,
+            });
+          } catch {
+            throw ApiError.signedAudioUrlFailed();
+          }
+
+          const transcription = await transcriptionService.transcribeRecording({
+            audioUrl,
+            language: meeting.language,
+            knownParticipants: meeting.knownParticipants,
+            technicalTerms: meeting.technicalTerms,
+          });
+          const response = await repository.replaceMeetingTranscription({
+            meetingId: meeting.id,
+            transcription,
+            processingStartedAt,
+            processingTimeMs: Date.now() - processingStartedMs,
+          });
+
+          res.json(response);
+        } catch (error) {
+          try {
+            await repository.markMeetingFailed({
+              meetingId: meeting.id,
+              errorCode:
+                error instanceof ApiError
+                  ? error.code
+                  : "TRANSCRIPTION_PROVIDER_FAILED",
+              errorMessage:
+                error instanceof ApiError
+                  ? error.message
+                  : "Uploaded-audio transcription failed.",
+            });
+          } catch (markFailedError) {
+            logger.warn(
+              { err: markFailedError, meetingId: meeting.id },
+              "could not mark transcription failure",
+            );
+          }
+
+          throw error instanceof ApiError
+            ? error
+            : ApiError.transcriptionProviderFailed();
+        }
       } catch (error) {
         next(error);
       }

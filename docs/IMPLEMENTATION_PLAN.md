@@ -30,54 +30,48 @@ short-lived signed download.
 
 ## 3. Uploaded-Audio Transcription and Diarisation
 
-Deliverables: Deepgram upload transcription, diarisation normalization, persisted speaker and transcript segment rows, deterministic duration/speaking-time calculations.  
+Status: implemented in this repository; final status depends on the real Deepgram verifier result for the supplied demo WAV.
+Deliverables: Deepgram Nova-3 uploaded-audio transcription, `diarize_model=latest`, provider-neutral normalization, persisted speaker and transcript segment rows, atomic Supabase replacement RPC, deterministic speaking-time calculations, WER utility and real-data processing/detail UI.
 Dependencies: repositories and storage service.  
-Acceptance tests: fixture audio transcription test with provider mocked at boundary.  
-Main risks: large file handling, provider timeouts, diarisation inconsistencies.
+Acceptance tests: mocked provider service tests, API transcription-state tests, WER utility tests, migration contract tests, linked Supabase migration push/lint, and `npm run verify:deepgram` against the demo recording.
+Main risks: provider timeouts, audio quality, diarisation inconsistencies and WER exceeding the target on the real recording.
 
-## 4. Transcript Normalization and Speaker Renaming
+## 4. Gemini Structured Summary and Action Items
 
-Deliverables: segment grouping from provider words, speaker records, transcript UI polish; rename persistence already exists from Phase 2.  
-Dependencies: Deepgram output shape.  
-Acceptance tests: deterministic speaking-time unit tests and speaker rename API tests.  
-Main risks: preserving raw speaker labels while allowing user-friendly names.
-
-## 5. Structured Meeting Analysis
-
-Deliverables: Gemini structured summary, action item extraction, evidence spans.  
+Deliverables: Gemini structured summary, action item extraction, evidence spans and user-visible empty-state replacement only after validated model output exists.
 Dependencies: normalized transcript segments.  
 Acceptance tests: schema validation against recorded fixtures and malformed output rejection.  
 Main risks: hallucinated tasks or missing source evidence.
 
-## 6. RAG Indexing and Search
+## 5. RAG Indexing and Search
 
 Deliverables: chunking, embeddings, pgvector storage, archive/global search results.  
 Dependencies: persisted transcript and summary data.  
 Acceptance tests: retrieval relevance tests over known fixture meetings.  
 Main risks: poor chunk boundaries and high-cost embedding calls.
 
-## 7. Live Transcription
+## 6. Live Transcription
 
 Deliverables: browser microphone capture, API WebSocket session, Deepgram streaming.  
 Dependencies: transcription service boundary and storage model.  
 Acceptance tests: WebSocket protocol tests and manual browser microphone test.  
 Main risks: browser permissions, audio encoding and connection recovery.
 
-## 8. Analytics
+## 7. Analytics
 
 Deliverables: meeting trends, speaking-time distribution, completion rate, topic counts.  
 Dependencies: repositories, transcript segments, action items and topics.  
 Acceptance tests: deterministic query tests for known fixtures.  
 Main risks: confusing AI-generated insights with deterministic metrics.
 
-## 9. Testing and Evaluation
+## 8. Testing and Evaluation
 
 Deliverables: integration coverage, accessibility checks, provider failure tests, demo fixtures.  
 Dependencies: all feature paths.  
 Acceptance tests: CI run with typecheck, lint, tests and build.  
 Main risks: tests passing only with local secrets or fragile external calls.
 
-## 10. Deployment and Demo Preparation
+## 9. Deployment and Demo Preparation
 
 Deliverables: deployed web/API, Supabase project, environment configuration, demo script.  
 Dependencies: stable feature set.  
