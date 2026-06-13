@@ -1,5 +1,5 @@
--- ScribeFlow Phase 5A: Add semantic search RPC for meeting chunks
--- Provides vector similarity search over meeting_chunks embeddings.
+-- ScribeFlow Phase 5A: Fix semantic search RPC for meeting chunks
+-- Updates the search_path to include the extensions schema so the `<=>` operator can be found
 
 create or replace function public.match_meeting_chunks(
   p_query_embedding extensions.vector,
@@ -37,22 +37,3 @@ begin
   limit p_match_count;
 end;
 $$;
-
-revoke all on function public.match_meeting_chunks(
-  extensions.vector,
-  float8,
-  int
-) from public, anon, authenticated;
-
-grant execute on function public.match_meeting_chunks(
-  extensions.vector,
-  float8,
-  int
-) to service_role;
-
-comment on function public.match_meeting_chunks(
-  extensions.vector,
-  float8,
-  int
-) is
-  'Backend-only semantic search over meeting chunks using vector similarity.';

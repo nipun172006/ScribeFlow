@@ -18,17 +18,16 @@ describe("future feature routes", () => {
     vi.unstubAllEnvs();
   });
 
-  it("returns a typed 501 body instead of fabricated meeting data", async () => {
+  it("returns 503 when search is called without backend services configured", async () => {
     await withTestServer(await createIsolatedApp(), async (baseUrl) => {
       const response = await request(baseUrl)
         .post("/api/search")
         .send({ query: "decisions from yesterday" })
-        .expect(501);
+        .expect(503);
 
       expect(response.body).toMatchObject({
         error: {
-          code: "FEATURE_NOT_IMPLEMENTED",
-          message: "Transcript and summary search are not indexed yet.",
+          code: "SUPABASE_NOT_CONFIGURED",
         },
       });
       expect(typeof response.body.error.requestId).toBe("string");

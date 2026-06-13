@@ -70,7 +70,7 @@ const mockMeetingDetail: MeetingDetail = {
     openQuestions: ["Do we have enough resources?"],
     nextSteps: ["Schedule follow-up with marketing."],
     attendees: ["Alice"],
-    topics: ["Launch", "Q3"],
+    topics: [],
   },
   actionItems: [
     {
@@ -183,5 +183,47 @@ describe("Meeting Chunking Service", () => {
     const overviewChunk = chunks.find((c) => c.kind === "executive_overview");
 
     expect(overviewChunk?.text).toBe("This is a text with extra spaces");
+  });
+
+  it("never returns zero chunks for a completed meeting with transcript", () => {
+    const chunks = createMeetingChunks(mockMeetingDetail);
+    expect(chunks.length).toBeGreaterThan(0);
+  });
+
+  it("creates all expected chunk kinds from a full meeting", () => {
+    const chunks = createMeetingChunks(mockMeetingDetail);
+    const kinds = new Set(chunks.map((c) => c.kind));
+
+    expect(kinds.has("transcript")).toBe(true);
+    expect(kinds.has("executive_overview")).toBe(true);
+    expect(kinds.has("key_decision")).toBe(true);
+    expect(kinds.has("discussion_point")).toBe(true);
+    expect(kinds.has("open_question")).toBe(true);
+    expect(kinds.has("next_step")).toBe(true);
+    expect(kinds.has("topic")).toBe(true);
+    expect(kinds.has("action_item")).toBe(true);
+  });
+
+  it("handles persisted summary shape where topics come from detail.topics", () => {
+    const detail: MeetingDetail = {
+      ...mockMeetingDetail,
+      summary: {
+        ...mockMeetingDetail.summary!,
+        topics: [],
+      },
+    };
+
+    const chunks = createMeetingChunks(detail);
+    const topicChunks = chunks.filter((c) => c.kind === "topic");
+    expect(topicChunks.length).toBe(2);
+    expect(topicChunks.map((c) => c.text)).toContain("Launch");
+    expect(topicChunks.map((c) => c.text)).toContain("Q3");
+  });
+
+  it("chunk metadata includes kind field matching chunk kind", () => {
+    const chunks = createMeetingChunks(mockMeetingDetail);
+    for (const chunk of chunks) {
+      expect(chunk.metadata.kind).toBe(chunk.kind);
+    }
   });
 });

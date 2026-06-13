@@ -34,23 +34,28 @@ export class MeetingIndexingService {
       );
     }
 
-    const existingChunks = await this.supabaseClient
+    const { count: existingCount, error: countError } = await this.supabaseClient
       .from("meeting_chunks")
-      .select("count")
-      .eq("meeting_id", meetingId)
-      .single();
+      .select("id", { count: "exact", head: true })
+      .eq("meeting_id", meetingId);
 
-    const isIdempotent =
-      existingChunks.error?.code !== "PGRST116" && existingChunks.data;
+    if (countError) {
+      throw ApiError.databaseOperationFailed("Could not count meeting chunks.", {
+        cause: countError,
+      });
+    }
 
-    if (isIdempotent) {
-      logger.debug({ meetingId }, "meeting already indexed, returning cached result");
+    const existingChunkCount = existingCount ?? 0;
 
-      const chunkCount =
-        (existingChunks.data as unknown as { count: number }).count || 0;
+    if (existingChunkCount > 0) {
+      logger.debug(
+        { meetingId, chunkCount: existingChunkCount },
+        "meeting already indexed, returning cached result",
+      );
+
       return {
         meetingId,
-        chunkCount,
+        chunkCount: existingChunkCount,
         embeddingDimensions: env.GEMINI_EMBEDDING_DIMENSIONS,
         embeddingModel: env.GEMINI_EMBEDDING_MODEL,
         indexedAt: new Date().toISOString(),

@@ -15,17 +15,18 @@ export interface MeetingEmbeddingService {
 }
 
 type GeminiEmbedContentResponse = {
-  embedding: {
+  embeddings: Array<{
     values: number[];
-  };
+  }>;
 };
 
 type GeminiEmbeddingClient = {
   models: {
     embedContent: (request: {
       model: string;
-      content: {
-        parts: Array<{ text: string }>;
+      contents: string;
+      config?: {
+        outputDimensionality?: number;
       };
     }) => Promise<GeminiEmbedContentResponse>;
   };
@@ -74,36 +75,35 @@ export class GeminiMeetingEmbeddingService implements MeetingEmbeddingService {
 
         const response = await client.models.embedContent({
           model,
-          content: {
-            parts: [{ text: trimmed }],
+          contents: trimmed,
+          config: {
+            outputDimensionality: expectedDimensions,
           },
         });
 
-        if (!response.embedding?.values || response.embedding.values.length === 0) {
+        const embeddingValues = response.embeddings?.[0]?.values;
+        if (!embeddingValues || embeddingValues.length === 0) {
           throw ApiError.geminiInvalidResponse("Gemini returned an empty embedding.");
         }
 
-        const embedding = response.embedding.values;
-        if (embedding.length !== expectedDimensions) {
+        if (embeddingValues.length !== expectedDimensions) {
           logger.warn(
             {
               model,
               expectedDimensions,
-              actualDimensions: embedding.length,
+              actualDimensions: embeddingValues.length,
             },
             "embedding dimensions mismatch",
           );
 
-          if (embedding.length !== expectedDimensions) {
-            throw ApiError.geminiInvalidResponse(
-              `Embedding dimensions mismatch: expected ${expectedDimensions}, got ${embedding.length}`,
-            );
-          }
+          throw ApiError.geminiInvalidResponse(
+            `Embedding dimensions mismatch: expected ${expectedDimensions}, got ${embeddingValues.length}`,
+          );
         }
 
         results.push({
-          embedding,
-          dimensions: embedding.length,
+          embedding: embeddingValues,
+          dimensions: embeddingValues.length,
         });
       }
 

@@ -7,7 +7,7 @@ const mockEmbedding = Array(768)
 async function loadService(geminiKey = "test-gemini-key") {
   vi.resetModules();
   vi.stubEnv("GEMINI_API_KEY", geminiKey);
-  vi.stubEnv("GEMINI_EMBEDDING_MODEL", "text-embedding-004");
+  vi.stubEnv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2");
   vi.stubEnv("GEMINI_EMBEDDING_DIMENSIONS", "768");
 
   return import("../src/services/meetingEmbeddingService.js");
@@ -35,7 +35,7 @@ describe("GeminiMeetingEmbeddingService", () => {
   it("embeds a single text successfully", async () => {
     const { GeminiMeetingEmbeddingService } = await loadService();
     const embedContent = vi.fn(async () => ({
-      embedding: { values: mockEmbedding },
+      embeddings: [{ values: mockEmbedding }],
     }));
 
     const service = new GeminiMeetingEmbeddingService(() => ({
@@ -52,7 +52,7 @@ describe("GeminiMeetingEmbeddingService", () => {
   it("embeds multiple texts successfully", async () => {
     const { GeminiMeetingEmbeddingService } = await loadService();
     const embedContent = vi.fn(async () => ({
-      embedding: { values: mockEmbedding },
+      embeddings: [{ values: mockEmbedding }],
     }));
 
     const service = new GeminiMeetingEmbeddingService(() => ({
@@ -93,7 +93,7 @@ describe("GeminiMeetingEmbeddingService", () => {
     const { GeminiMeetingEmbeddingService } = await loadService();
     const wrongDimensions = Array(256).fill(0);
     const embedContent = vi.fn(async () => ({
-      embedding: { values: wrongDimensions },
+      embeddings: [{ values: wrongDimensions }],
     }));
 
     const service = new GeminiMeetingEmbeddingService(() => ({
