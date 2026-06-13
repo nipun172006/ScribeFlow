@@ -85,7 +85,10 @@ export class ApiError extends Error {
     );
   }
 
-  static databaseOperationFailed(message = "Database operation failed.", details?: unknown) {
+  static databaseOperationFailed(
+    message = "Database operation failed.",
+    details?: unknown,
+  ) {
     return new ApiError(500, "DATABASE_OPERATION_FAILED", message, details);
   }
 
