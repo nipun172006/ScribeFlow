@@ -622,42 +622,65 @@ describe("Phase 2 frontend integration", () => {
 
   describe("Live recording mode", () => {
     let mockGetUserMedia: ReturnType<typeof vi.fn>;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let mockMediaRecorder: any;
+    const mockStop = vi.fn();
+    const mockStream = {
+      getTracks: () => [{ stop: mockStop }],
+    } as unknown as MediaStream;
+
+    class MockMediaRecorder {
+      static isTypeSupported = vi.fn(() => true);
+
+      state = "inactive";
+      ondataavailable: ((event: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+
+      constructor(
+        public stream: MediaStream,
+        public options?: MediaRecorderOptions,
+      ) {}
+
+      start() {
+        this.state = "recording";
+      }
+
+      stop() {
+        this.state = "inactive";
+        this.ondataavailable?.({
+          data: new Blob(["test audio"], { type: "audio/webm" }),
+        });
+        this.onstop?.();
+      }
+    }
 
     beforeEach(() => {
-      mockGetUserMedia = vi.fn().mockResolvedValue({
-        getTracks: () => [{ stop: vi.fn() }],
-      });
+      mockGetUserMedia = vi.fn().mockResolvedValue(mockStream);
 
-      Object.defineProperty(window.navigator, "mediaDevices", {
-        value: { getUserMedia: mockGetUserMedia },
+      Object.defineProperty(navigator, "mediaDevices", {
         configurable: true,
+        value: {
+          getUserMedia: mockGetUserMedia,
+        },
       });
-      vi.stubGlobal("setInterval", vi.fn().mockReturnValue(123));
-      vi.stubGlobal("clearInterval", vi.fn());
 
-      mockMediaRecorder = {
-        start: vi.fn(),
-        stop: vi.fn(),
-        state: "inactive",
-        stream: { getTracks: () => [{ stop: vi.fn() }] },
-      };
-
-      Object.assign(window, {
-        MediaRecorder: Object.assign(
-          vi.fn().mockImplementation(() => mockMediaRecorder),
-          { isTypeSupported: vi.fn().mockReturnValue(true) },
-        ),
+      Object.defineProperty(window, "MediaRecorder", {
+        configurable: true,
+        value: MockMediaRecorder,
       });
+
+      Object.defineProperty(globalThis, "MediaRecorder", {
+        configurable: true,
+        value: MockMediaRecorder,
+      });
+
       window.URL.createObjectURL = vi.fn().mockReturnValue("blob:test");
       window.URL.revokeObjectURL = vi.fn();
     });
 
     afterEach(() => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (window as any).MediaRecorder;
-      vi.unstubAllGlobals();
+      // Clean up globals
+      delete (window as unknown as { MediaRecorder?: unknown }).MediaRecorder;
+      delete (globalThis as unknown as { MediaRecorder?: unknown }).MediaRecorder;
     });
 
     it("renders live recording tab and allows starting and stopping recording", async () => {
@@ -668,16 +691,41 @@ describe("Phase 2 frontend integration", () => {
         </MemoryRouter>,
       );
 
-      // Switch to Live tab
+      // 1. click Record Live
       await user.click(screen.getByRole("tab", { name: /record live/i }));
-
       expect(
         screen.getByText(/record a live meeting from your microphone/i),
       ).toBeInTheDocument();
 
-      // Start recording
+      // 2. click Start recording
       await user.click(screen.getByRole("button", { name: /start recording/i }));
+
+      // 3. getUserMedia called with { audio: true }
       expect(mockGetUserMedia).toHaveBeenCalledWith({ audio: true });
+
+      // 4. Stop recording appears
+      const stopButton = await screen.findByRole("button", { name: /stop recording/i });
+      expect(stopButton).toBeInTheDocument();
+
+      // 5. click Stop recording
+      await user.click(stopButton);
+
+      // 6. recording-ready UI appears (Use recording button)
+      const useButton = await screen.findByRole("button", { name: /use recording/i });
+      expect(useButton).toBeInTheDocument();
+
+      // 7. audio preview appears (audio element with src blob:test)
+      const audioPreview = document.querySelector("audio");
+      expect(audioPreview).toBeInTheDocument();
+      expect(audioPreview).toHaveAttribute("src", "blob:test");
+
+      // Verify upload flow triggers correctly
+      // Need a meeting title to enable the Use recording button
+      const titleInputs = screen.getAllByLabelText(/meeting title/i);
+      const titleInput = titleInputs[titleInputs.length - 1];
+      expect(titleInput).toBeDefined();
+      await user.type(titleInput!, "Live Demo");
+      expect(useButton).toBeEnabled();
     });
 
     it("shows error if getUserMedia fails", async () => {
@@ -692,14 +740,13 @@ describe("Phase 2 frontend integration", () => {
       await user.click(screen.getByRole("tab", { name: /record live/i }));
       await user.click(screen.getByRole("button", { name: /start recording/i }));
 
-      await waitFor(() => {
-        expect(screen.getByText(/permission denied/i)).toBeInTheDocument();
-      });
+      expect(await screen.findByText(/permission denied/i)).toBeInTheDocument();
     });
 
     it("shows unsupported error if MediaRecorder is missing", async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (window as any).MediaRecorder;
+      delete (window as unknown as { MediaRecorder?: unknown }).MediaRecorder;
+      delete (globalThis as unknown as { MediaRecorder?: unknown }).MediaRecorder;
+
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
