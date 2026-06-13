@@ -635,6 +635,10 @@ describe("Phase 2 frontend integration", () => {
       onstop: (() => void) | null = null;
       onerror: ((event: Event) => void) | null = null;
 
+      get mimeType() {
+        return this.options?.mimeType || "audio/webm";
+      }
+
       constructor(
         public stream: MediaStream,
         public options?: MediaRecorderOptions,
@@ -647,7 +651,7 @@ describe("Phase 2 frontend integration", () => {
       stop() {
         this.state = "inactive";
         this.ondataavailable?.({
-          data: new Blob(["test audio"], { type: "audio/webm" }),
+          data: new Blob(["test audio"], { type: this.mimeType }),
         });
         this.onstop?.();
       }
@@ -726,6 +730,22 @@ describe("Phase 2 frontend integration", () => {
       expect(titleInput).toBeDefined();
       await user.type(titleInput!, "Live Demo");
       expect(useButton).toBeEnabled();
+
+      apiClient.initializeUploadMeeting.mockResolvedValueOnce({
+        uploadInstructions: {
+          token: "fake-token",
+          endpoint: "http://localhost:54321/tus",
+        },
+        meetingDetail: { id: "test-live-id" } as unknown as MeetingDetail,
+      });
+
+      await user.click(useButton);
+
+      expect(apiClient.initializeUploadMeeting).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mimeType: "audio/webm",
+        }),
+      );
     });
 
     it("shows error if getUserMedia fails", async () => {

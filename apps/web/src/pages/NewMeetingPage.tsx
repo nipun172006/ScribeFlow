@@ -278,15 +278,21 @@ export function NewMeetingPage() {
       };
 
       recorder.onstop = () => {
-        const type = recorder.mimeType || "audio/webm";
-        const blob = new Blob(chunksRef.current, { type });
+        const recorderType = recorder.mimeType || "audio/webm";
+        const uploadMimeType = recorderType.startsWith("audio/webm")
+          ? "audio/webm"
+          : recorderType;
+
+        const blob = new Blob(chunksRef.current, { type: uploadMimeType });
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
         setRecordingStatus("recorded");
 
-        const ext = type.includes("mp4") ? "mp4" : "webm";
+        const ext = uploadMimeType.includes("mp4") ? "mp4" : "webm";
         const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
-        const liveFile = new File([blob], `live-meeting-${dateStr}.${ext}`, { type });
+        const liveFile = new File([blob], `live-meeting-${dateStr}.${ext}`, {
+          type: uploadMimeType,
+        });
         setFile(liveFile);
 
         stream.getTracks().forEach((track) => track.stop());

@@ -75,8 +75,8 @@ export function AppShell() {
       <div className="mt-auto rounded-card border border-border/70 bg-background/70 p-4">
         <p className="text-sm font-medium text-primary">Phase 4A analysis</p>
         <p className="mt-2 text-sm leading-6 text-muted">
-          Uploaded recordings can be transcribed with Deepgram and analysed with Gemini.
-          RAG and live mode remain future phases.
+          Uploaded and live browser recordings can be transcribed with Deepgram,
+          analysed with Gemini, and searched through the archive.
         </p>
       </div>
     </aside>
