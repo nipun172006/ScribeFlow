@@ -30,7 +30,13 @@ const envSchema = z.object({
     .default(115_000),
   DEEPGRAM_MAX_RETRIES: z.coerce.number().int().min(0).max(3).default(1),
   GEMINI_API_KEY: optionalSecretSchema,
-  GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash"),
+  GEMINI_MODEL: z.string().min(1).default("gemini-2.5-flash"),
+  GEMINI_REQUEST_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(120_000)
+    .default(60_000),
   GEMINI_EMBEDDING_MODEL: z.string().min(1).default("gemini-embedding-2"),
   GEMINI_EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(768),
   SUPABASE_URL: z.preprocess(emptyStringToUndefined, z.string().url().optional()),

@@ -4,11 +4,11 @@ ScribeFlow is a university GenAI project for a premium AI meeting-intelligence p
 
 ## Current Status
 
-This repository is in Phase 3. It contains the Phase 1 monorepo foundation, the Phase 2 Supabase persistence and private upload foundation, and Phase 3 uploaded-audio transcription through Deepgram Nova-3 with batch diarisation.
+This repository is in Phase 4A Part 1. It contains the Phase 1 monorepo foundation, the Phase 2 Supabase persistence and private upload foundation, Phase 3 uploaded-audio transcription through Deepgram Nova-3 with batch diarisation, and a backend-only Gemini structured-analysis proof.
 
 Uploading a recording stores meeting metadata, uploads audio directly to private Supabase Storage through signed TUS, verifies storage metadata, then `POST /api/meetings/:meetingId/transcribe` creates a backend-only signed download URL, calls Deepgram with `diarize_model=latest`, normalizes speakers and transcript segments, and persists the meeting in `transcribed` status.
 
-Gemini summaries, action item extraction, embeddings, RAG search, live microphone streaming and cross-meeting analytics are still intentionally unimplemented. The next controlled phase is Gemini structured analysis.
+Gemini structured analysis can be run manually through `npm run verify:gemini` against the latest transcribed meeting. The result is validated but intentionally not persisted yet. Gemini embeddings, RAG search, live microphone streaming and cross-meeting analytics are still intentionally unimplemented.
 
 ## Repository Structure
 
@@ -73,11 +73,12 @@ Provider variables:
 - `DEEPGRAM_MAX_RETRIES`
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
+- `GEMINI_REQUEST_TIMEOUT_MS`
 - `GEMINI_EMBEDDING_MODEL`
 - `GEMINI_EMBEDDING_DIMENSIONS`
 
 Deepgram is used only by the backend. No Deepgram key or signed Supabase download URL is sent to the browser.
-Gemini variables remain configured for later phases and are not called in Phase 3.
+Gemini is used only by the backend verifier/service in Phase 4A Part 1. No Gemini key is sent to the browser, and verifier output is not saved to Supabase yet.
 
 Demo verification variables:
 
@@ -118,6 +119,7 @@ npm run build --workspace @scribeflow/api
 npm run start --workspace @scribeflow/api
 npm run verify:supabase-cloud
 npm run verify:deepgram
+npm run verify:gemini
 npm run evaluate:wer -- --reference <path> --hypothesis <path>
 ```
 
@@ -138,6 +140,12 @@ failed verification rows. A successful run intentionally retains at most one
 verification meeting so the frontend transcript, speaker rename and analytics
 views can be inspected with real data. It does not print secrets, signed upload
 tokens or signed download URLs.
+
+`npm run verify:gemini` is an opt-in integration verifier for a real running
+API and Gemini key. It finds the latest `transcribed` meeting, fetches its
+persisted transcript, calls Gemini with text-only segments and a strict JSON
+schema, validates evidence segment IDs, and prints safe counts without saving
+the analysis or changing meeting status.
 
 ## Development Commands
 
@@ -172,6 +180,10 @@ Implemented in Phase 2:
 Implemented in Phase 3:
 
 - `POST /api/meetings/:meetingId/transcribe`
+
+Implemented as a backend-only Phase 4A Part 1 proof:
+
+- Gemini structured analysis service and `npm run verify:gemini`
 
 Still intentionally unimplemented with typed `501` errors:
 
@@ -212,6 +224,19 @@ Processing page
 
 Deepgram failures return explicit API errors and can mark the meeting failed with a safe message. The app never silently replaces failed transcription with fixtures.
 
+## Gemini Analysis Proof
+
+```text
+Verifier script
+  -> API reads the latest transcribed meeting
+  -> API returns persisted speakers and transcript segments
+  -> Gemini receives only text segments, speaker names and meeting metadata
+  -> Backend validates schema and evidence segment IDs
+  -> Verifier prints safe counts and evidence IDs without saving results
+```
+
+Gemini analysis is not wired to an API route or frontend workflow yet. Phase 4A Part 1 proves the provider boundary and validation path only; persistence of summaries, action items and topics remains a later controlled phase.
+
 ## Frontend Routes
 
 - `/` dashboard with real recent-meeting loading
@@ -227,7 +252,7 @@ Unknown routes render a designed not-found state.
 ## Known Unfinished Features
 
 - Deepgram live transcription.
-- Gemini summaries, action items and embeddings.
+- Persisted Gemini summaries, action items and embeddings.
 - Semantic/hybrid RAG retrieval.
 - Cross-meeting analytics calculations.
 - Authentication.

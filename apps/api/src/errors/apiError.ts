@@ -151,6 +151,58 @@ export class ApiError extends Error {
     return new ApiError(502, "DEEPGRAM_INVALID_RESPONSE", message);
   }
 
+  static geminiNotConfigured() {
+    return new ApiError(
+      503,
+      "GEMINI_NOT_CONFIGURED",
+      "Gemini meeting analysis is not configured on the server.",
+    );
+  }
+
+  static geminiAuthFailed() {
+    return new ApiError(
+      502,
+      "GEMINI_AUTH_FAILED",
+      "Gemini rejected the configured server credentials.",
+    );
+  }
+
+  static geminiRateLimited() {
+    return new ApiError(
+      503,
+      "GEMINI_RATE_LIMITED",
+      "Gemini rate-limited the analysis request. Please retry later.",
+    );
+  }
+
+  static geminiRequestTimeout() {
+    return new ApiError(
+      504,
+      "GEMINI_REQUEST_TIMEOUT",
+      "Gemini meeting analysis did not finish before the configured timeout.",
+    );
+  }
+
+  static geminiRequestFailed() {
+    return new ApiError(
+      502,
+      "GEMINI_REQUEST_FAILED",
+      "Gemini meeting analysis failed. Please retry after checking the server configuration.",
+    );
+  }
+
+  static geminiInvalidResponse(
+    message = "Gemini returned meeting-analysis output that could not be parsed.",
+  ) {
+    return new ApiError(502, "GEMINI_INVALID_RESPONSE", message);
+  }
+
+  static meetingAnalysisOutputInvalid(
+    message = "Gemini returned meeting-analysis output that failed validation.",
+  ) {
+    return new ApiError(502, "MEETING_ANALYSIS_OUTPUT_INVALID", message);
+  }
+
   static noSpeechDetected() {
     return new ApiError(
       422,

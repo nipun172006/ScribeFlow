@@ -11,6 +11,7 @@ import type {
   SearchInput,
   SearchResult,
   StartLiveMeetingInput,
+  StructuredMeetingAnalysis,
   TranscriptSegment,
   TranscribeMeetingResponse,
   UpdateActionItemInput,
@@ -33,9 +34,11 @@ export type ReplaceMeetingTranscriptionInput = {
 };
 
 export type MeetingAnalysisResult = {
-  summary: MeetingSummary;
-  actionItems: ActionItem[];
-  topics: string[];
+  analysis: StructuredMeetingAnalysis;
+  provider: "gemini";
+  modelName: string;
+  responseId: string | null;
+  processingTimeMs: number;
 };
 
 export type CreateUploadMeetingRecord = UploadMeetingInput & {

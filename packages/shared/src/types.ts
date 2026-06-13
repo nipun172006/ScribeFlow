@@ -22,6 +22,8 @@ import type {
   searchInputSchema,
   searchResultSchema,
   startLiveMeetingInputSchema,
+  structuredAnalysisActionItemSchema,
+  structuredMeetingAnalysisSchema,
   transcribeMeetingResponseSchema,
   transcriptionSummarySchema,
   transcriptSegmentSchema,
@@ -51,6 +53,10 @@ export type TranscriptionSummary = z.infer<typeof transcriptionSummarySchema>;
 export type ActionItemStatus = z.infer<typeof actionItemStatusSchema>;
 export type ActionItem = z.infer<typeof actionItemSchema>;
 export type MeetingSummary = z.infer<typeof meetingSummarySchema>;
+export type StructuredMeetingAnalysis = z.infer<typeof structuredMeetingAnalysisSchema>;
+export type StructuredAnalysisActionItem = z.infer<
+  typeof structuredAnalysisActionItemSchema
+>;
 export type MeetingTopic = z.infer<typeof meetingTopicSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type MeetingAnalytics = z.infer<typeof meetingAnalyticsSchema>;

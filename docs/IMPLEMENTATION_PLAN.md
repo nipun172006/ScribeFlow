@@ -38,9 +38,10 @@ Main risks: provider timeouts, audio quality, diarisation inconsistencies and WE
 
 ## 4. Gemini Structured Summary and Action Items
 
+Status: Phase 4A Part 1 backend proof implemented; persistence and UI replacement remain future work.
 Deliverables: Gemini structured summary, action item extraction, evidence spans and user-visible empty-state replacement only after validated model output exists.
 Dependencies: normalized transcript segments.  
-Acceptance tests: schema validation against recorded fixtures and malformed output rejection.  
+Acceptance tests: mocked Gemini service tests, schema validation, malformed output rejection, evidence-ID validation and `npm run verify:gemini` against the retained transcribed demo meeting.  
 Main risks: hallucinated tasks or missing source evidence.
 
 ## 5. RAG Indexing and Search

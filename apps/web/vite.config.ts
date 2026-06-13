@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
@@ -9,11 +9,32 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ["react", "react-dom", "react-router-dom"],
-          query: ["@tanstack/react-query"],
-          charts: ["recharts"],
-          ui: ["lucide-react", "@radix-ui/react-tabs"],
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return undefined;
+          }
+
+          if (
+            id.includes("/react/") ||
+            id.includes("/react-dom/") ||
+            id.includes("/react-router-dom/")
+          ) {
+            return "react";
+          }
+
+          if (id.includes("/@tanstack/react-query/")) {
+            return "query";
+          }
+
+          if (id.includes("/recharts/")) {
+            return "charts";
+          }
+
+          if (id.includes("/lucide-react/") || id.includes("/@radix-ui/react-tabs/")) {
+            return "ui";
+          }
+
+          return undefined;
         },
       },
     },

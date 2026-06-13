@@ -123,7 +123,24 @@ The signed download URL stays in the API process and is never returned to the br
 
 Migration `20260612120000_add_uploaded_audio_transcription.sql` adds the `transcribed` status and `public.replace_meeting_transcription(...)`. The function deletes old speaker/segment rows and inserts the normalized replacement in one transaction, then marks the meeting `transcribed` and stores only safe provider metadata such as request ID, model, diarisation model, counts, confidence and processing time.
 
-## Planned Gemini and RAG Flow After Transcription
+## Phase 4A Gemini Structured-Analysis Proof
+
+```mermaid
+sequenceDiagram
+  participant Verifier
+  participant API
+  participant Gemini
+
+  Verifier->>API: Fetch latest transcribed meeting
+  API-->>Verifier: Meeting, speakers, transcript segments
+  Verifier->>Gemini: Text-only transcript with strict JSON schema
+  Gemini-->>Verifier: Structured JSON
+  Verifier->>Verifier: Validate Zod schema and evidence segment IDs
+```
+
+Phase 4A Part 1 adds the backend Gemini service and manual verifier only. It does not persist summaries, action items or topics, does not change meeting status, and does not expose Gemini credentials or results to frontend code.
+
+## Planned Gemini Persistence and RAG Flow After Transcription
 
 ```mermaid
 sequenceDiagram
@@ -168,8 +185,8 @@ sequenceDiagram
 
 ## Summary and Action-Extraction Strategy
 
-- Use Gemini structured output with a strict schema matching `MeetingSummary` and `ActionItem`.
-- Include transcript timestamps in prompts so extracted tasks can cite evidence.
+- Use Gemini structured output with a strict schema for attendees, overview, decisions, discussion points, questions, next steps, topics and action items.
+- Include transcript segment IDs and timestamps in prompts so extracted tasks can cite evidence.
 - Reject malformed model output rather than silently falling back to mock data.
 - Keep confidence scores and evidence text so users can review uncertain items.
 

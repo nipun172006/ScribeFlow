@@ -141,6 +141,36 @@ export const meetingSummarySchema = z.object({
   topics: z.array(z.string()),
 });
 
+const structuredAnalysisTextItemSchema = z
+  .object({
+    text: z.string().trim().min(1),
+    evidenceSegmentIds: z.array(uuidSchema),
+  })
+  .strict();
+
+export const structuredAnalysisActionItemSchema = z
+  .object({
+    task: z.string().trim().min(1),
+    ownerName: z.string().trim().min(1).nullable(),
+    deadlineText: z.string().trim().min(1).nullable(),
+    confidence: z.number().min(0).max(1),
+    evidenceSegmentIds: z.array(uuidSchema),
+  })
+  .strict();
+
+export const structuredMeetingAnalysisSchema = z
+  .object({
+    attendees: z.array(z.string().trim().min(1)),
+    executiveOverview: z.string().trim(),
+    keyDecisions: z.array(structuredAnalysisTextItemSchema),
+    discussionPoints: z.array(structuredAnalysisTextItemSchema),
+    openQuestions: z.array(structuredAnalysisTextItemSchema),
+    nextSteps: z.array(structuredAnalysisTextItemSchema),
+    topics: z.array(z.string().trim().min(1)),
+    actionItems: z.array(structuredAnalysisActionItemSchema),
+  })
+  .strict();
+
 export const searchResultSchema = z.object({
   meetingId: uuidSchema,
   meetingTitle: z.string().min(1),
@@ -323,6 +353,13 @@ export const apiErrorCodeSchema = z.enum([
   "DEEPGRAM_REQUEST_TIMEOUT",
   "DEEPGRAM_REQUEST_FAILED",
   "DEEPGRAM_INVALID_RESPONSE",
+  "GEMINI_NOT_CONFIGURED",
+  "GEMINI_AUTH_FAILED",
+  "GEMINI_RATE_LIMITED",
+  "GEMINI_REQUEST_TIMEOUT",
+  "GEMINI_REQUEST_FAILED",
+  "GEMINI_INVALID_RESPONSE",
+  "MEETING_ANALYSIS_OUTPUT_INVALID",
   "NO_SPEECH_DETECTED",
   "TRANSCRIPT_PERSISTENCE_FAILED",
   "TRANSCRIPTION_PROVIDER_FAILED",
