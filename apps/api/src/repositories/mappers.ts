@@ -27,7 +27,20 @@ const asRecord = (value: Json): Record<string, unknown> =>
 
 const asStringArray = (value: Json): string[] =>
   Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
+    ? value
+        .map((item) => {
+          if (typeof item === "string") {
+            return item;
+          }
+
+          if (item && typeof item === "object" && !Array.isArray(item)) {
+            const record = item as Record<string, unknown>;
+            return typeof record.text === "string" ? record.text : null;
+          }
+
+          return null;
+        })
+        .filter((item): item is string => typeof item === "string")
     : [];
 
 const mapNullableDate = (value: string | null) =>
@@ -136,6 +149,7 @@ export function mapActionItem(row: ActionItemRow): ActionItem {
     sourceStartMs: row.source_start_ms,
     sourceEndMs: row.source_end_ms,
     evidenceText: row.evidence_text,
+    evidenceSegmentIds: row.evidence_segment_ids,
     completedAt: mapNullableDate(row.completed_at),
     createdAt: mapRequiredDate(row.created_at),
     updatedAt: mapRequiredDate(row.updated_at),

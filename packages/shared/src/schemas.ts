@@ -126,6 +126,7 @@ export const actionItemSchema = z.object({
   sourceStartMs: z.number().int().nonnegative().nullable(),
   sourceEndMs: z.number().int().nonnegative().nullable(),
   evidenceText: z.string().nullable(),
+  evidenceSegmentIds: z.array(uuidSchema).optional(),
   completedAt: isoDateStringSchema.nullable().optional(),
   createdAt: isoDateStringSchema.optional(),
   updatedAt: isoDateStringSchema.optional(),
@@ -321,6 +322,19 @@ export const transcribeMeetingResponseSchema = z.object({
   alreadyTranscribed: z.boolean(),
 });
 
+export const analyzeMeetingResponseSchema = z.object({
+  meeting: meetingSchema,
+  summary: meetingSummarySchema,
+  topics: z.array(meetingTopicSchema),
+  actionItems: z.array(actionItemSchema),
+  analysis: structuredMeetingAnalysisSchema,
+  provider: z.literal("gemini"),
+  modelName: z.string().min(1),
+  responseId: z.string().min(1).nullable(),
+  processingTimeMs: z.number().int().nonnegative().nullable(),
+  alreadyAnalysed: z.boolean(),
+});
+
 export const uploadFailureInputSchema = z.object({
   errorCode: z
     .string()
@@ -360,6 +374,7 @@ export const apiErrorCodeSchema = z.enum([
   "GEMINI_REQUEST_FAILED",
   "GEMINI_INVALID_RESPONSE",
   "MEETING_ANALYSIS_OUTPUT_INVALID",
+  "ANALYSIS_PERSISTENCE_FAILED",
   "NO_SPEECH_DETECTED",
   "TRANSCRIPT_PERSISTENCE_FAILED",
   "TRANSCRIPTION_PROVIDER_FAILED",

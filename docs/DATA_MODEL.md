@@ -69,25 +69,25 @@ Relationship: `meeting_id` is the primary key and references meetings with `on d
 
 Constraints: JSON arrays for attendees, decisions, discussion points, open questions and next steps.
 
-AI-generated fields later: all summary content and model name.  
+AI-generated fields now: all summary content and model name. The JSON section arrays store validated text plus evidence segment IDs; the API maps them to UI-safe summary text for meeting detail.
 Deterministic fields: schema version and timestamps.  
-User-editable fields: none in Phase 3.
+User-editable fields: none in Phase 4A.
 
 ## `action_items`
 
 Stores extracted task records and user-controlled completion status.
 
-Columns: `id`, `meeting_id`, `task`, `owner_name`, `owner_speaker_id`, `deadline`, `deadline_text`, `status`, `confidence`, `source_segment_id`, `source_start_ms`, `source_end_ms`, `evidence_text`, `completed_at`, `created_at`, `updated_at`.
+Columns: `id`, `meeting_id`, `task`, `owner_name`, `owner_speaker_id`, `deadline`, `deadline_text`, `status`, `confidence`, `source_segment_id`, `source_start_ms`, `source_end_ms`, `evidence_text`, `evidence_segment_ids`, `completed_at`, `created_at`, `updated_at`.
 
 Relationships: meeting cascade delete; owner speaker and source segment use `on delete set null`.
 
 Constraints: non-blank task, status `open` or `completed`, confidence null or 0..1, non-negative source timestamps, `source_end_ms >= source_start_ms`.
 
-Indexes: `(meeting_id, status)`, `owner_speaker_id`, `deadline`, `source_segment_id`.
+Indexes: `(meeting_id, status)`, `owner_speaker_id`, `deadline`, `source_segment_id`, GIN on `evidence_segment_ids`.
 
-AI-generated fields later: task, owner, deadline, confidence, evidence.  
+AI-generated fields now: task, owner, deadline text, confidence and evidence. Unknown owners/deadlines remain null.
 Deterministic fields: status, `completed_at`, timestamps.  
-User-editable fields in Phase 3: `status` only.
+User-editable fields in Phase 4A: `status` only.
 
 ## `meeting_topics`
 
@@ -101,9 +101,18 @@ Constraints: non-blank labels, confidence null or 0..1, positive mention count.
 
 Indexes: case-insensitive unique index on `(meeting_id, lower(normalized_label))`, plus `lower(normalized_label)` for cross-meeting aggregation.
 
-AI-generated fields later: labels, confidence, mention count.  
+AI-generated fields now: display labels and mention count from Gemini topic strings.
 Deterministic fields: lowercase normalization by application logic, timestamps.  
-User-editable fields: none in Phase 3.
+User-editable fields: none in Phase 4A.
+
+## Analysis RPC
+
+Migration `20260613100000_add_gemini_analysis_persistence.sql` adds:
+
+- `action_items.evidence_segment_ids`.
+- `public.persist_meeting_analysis(...)`, a backend-only RPC that validates evidence segment IDs, replaces prior summary/topic/action rows atomically, stores safe Gemini metadata under `meetings.metadata.analysis`, and marks the meeting `completed`.
+
+The API calls this RPC only after the Gemini service validates schema output. Controllers do not write raw Supabase analysis rows directly.
 
 ## `meeting_chunks`
 

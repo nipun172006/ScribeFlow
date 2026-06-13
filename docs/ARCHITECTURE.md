@@ -123,24 +123,7 @@ The signed download URL stays in the API process and is never returned to the br
 
 Migration `20260612120000_add_uploaded_audio_transcription.sql` adds the `transcribed` status and `public.replace_meeting_transcription(...)`. The function deletes old speaker/segment rows and inserts the normalized replacement in one transaction, then marks the meeting `transcribed` and stores only safe provider metadata such as request ID, model, diarisation model, counts, confidence and processing time.
 
-## Phase 4A Gemini Structured-Analysis Proof
-
-```mermaid
-sequenceDiagram
-  participant Verifier
-  participant API
-  participant Gemini
-
-  Verifier->>API: Fetch latest transcribed meeting
-  API-->>Verifier: Meeting, speakers, transcript segments
-  Verifier->>Gemini: Text-only transcript with strict JSON schema
-  Gemini-->>Verifier: Structured JSON
-  Verifier->>Verifier: Validate Zod schema and evidence segment IDs
-```
-
-Phase 4A Part 1 adds the backend Gemini service and manual verifier only. It does not persist summaries, action items or topics, does not change meeting status, and does not expose Gemini credentials or results to frontend code.
-
-## Planned Gemini Persistence and RAG Flow After Transcription
+## Phase 4A Gemini Structured Analysis and Persistence
 
 ```mermaid
 sequenceDiagram
@@ -149,8 +132,22 @@ sequenceDiagram
   participant Database
 
   API->>Database: Read persisted transcript and speakers
-  API->>Gemini: Generate structured summary and action items
-  API->>Database: Persist summary, topics, tasks
+  API->>Gemini: Text-only transcript with strict JSON schema
+  Gemini-->>API: Structured JSON
+  API->>API: Validate Zod schema and evidence segment IDs
+  API->>Database: Persist summary, topics and tasks atomically
+```
+
+Phase 4A adds the backend Gemini service, `POST /api/meetings/:meetingId/analyze`, and `public.persist_meeting_analysis(...)`. The endpoint is idempotent: if a persisted summary already exists, it returns the stored analysis without another Gemini call. Gemini receives text-only transcript data, never audio or credentials.
+
+## Planned RAG Flow After Analysis
+
+```mermaid
+sequenceDiagram
+  participant API
+  participant Gemini
+  participant Database
+
   API->>Gemini: Generate embeddings for transcript chunks
   API->>Database: Store vectors in pgvector
 ```

@@ -1,11 +1,13 @@
 import type {
   ActionItem,
+  AnalyzeMeetingResponse,
   Meeting,
   MeetingAnalytics,
   MeetingDetail,
   MeetingListQuery,
   MeetingSpeaker,
   PaginatedMeetingList,
+  StructuredMeetingAnalysis,
   TranscribeMeetingResponse,
 } from "@scribeflow/shared";
 import { ApiError } from "../errors/apiError.js";
@@ -17,10 +19,16 @@ import {
   mapMeeting,
   mapMeetingDetail,
   mapMeetingSpeaker,
+  mapMeetingSummary,
+  mapMeetingTopic,
 } from "./mappers.js";
 import { buildTranscribeMeetingResponse } from "../services/transcriptionResponse.js";
 
 type MeetingInsert = Database["public"]["Tables"]["meetings"]["Insert"];
+type MeetingRow = Database["public"]["Tables"]["meetings"]["Row"];
+type SummaryRow = Database["public"]["Tables"]["meeting_summaries"]["Row"];
+type ActionItemRow = Database["public"]["Tables"]["action_items"]["Row"];
+type TopicRow = Database["public"]["Tables"]["meeting_topics"]["Row"];
 
 const meetingSortColumns: Record<MeetingListQuery["sort"], string> = {
   createdAt: "created_at",
@@ -30,6 +38,127 @@ const meetingSortColumns: Record<MeetingListQuery["sort"], string> = {
 
 const isMissingRowError = (error: { code?: string } | null) =>
   error?.code === "PGRST116";
+
+const asUnknownRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const asStringArray = (value: Json): string[] =>
+  Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+
+const asEvidenceItems = (value: Json): StructuredMeetingAnalysis["keyDecisions"] =>
+  Array.isArray(value)
+    ? value
+        .map((item) => {
+          if (typeof item === "string" && item.trim()) {
+            return {
+              text: item,
+              evidenceSegmentIds: [],
+            };
+          }
+
+          if (!item || typeof item !== "object" || Array.isArray(item)) {
+            return null;
+          }
+
+          const record = item as Record<string, unknown>;
+          const text = typeof record.text === "string" ? record.text.trim() : "";
+          const evidenceSegmentIds = Array.isArray(record.evidenceSegmentIds)
+            ? record.evidenceSegmentIds.filter(
+                (segmentId): segmentId is string => typeof segmentId === "string",
+              )
+            : [];
+
+          return text ? { text, evidenceSegmentIds } : null;
+        })
+        .filter(
+          (item): item is StructuredMeetingAnalysis["keyDecisions"][number] =>
+            item !== null,
+        )
+    : [];
+
+const getAnalysisMetadata = (meeting: Meeting) => {
+  const metadata = asUnknownRecord(meeting.metadata);
+  return asUnknownRecord(metadata.analysis);
+};
+
+const getStringMetadata = (
+  metadata: Record<string, unknown>,
+  key: string,
+): string | null => {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value : null;
+};
+
+const getNumberMetadata = (
+  metadata: Record<string, unknown>,
+  key: string,
+): number | null => {
+  const value = metadata[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+};
+
+function buildAnalysisFromRows(input: {
+  summary: SummaryRow;
+  actionItems: ActionItemRow[];
+  topics: TopicRow[];
+}): StructuredMeetingAnalysis {
+  return {
+    attendees: asStringArray(input.summary.attendees),
+    executiveOverview: input.summary.executive_overview,
+    keyDecisions: asEvidenceItems(input.summary.key_decisions),
+    discussionPoints: asEvidenceItems(input.summary.discussion_points),
+    openQuestions: asEvidenceItems(input.summary.open_questions),
+    nextSteps: asEvidenceItems(input.summary.next_steps),
+    topics: input.topics.map((topic) => topic.display_label),
+    actionItems: input.actionItems.map((item) => ({
+      task: item.task,
+      ownerName: item.owner_name,
+      deadlineText: item.deadline_text,
+      confidence: item.confidence ?? 0,
+      evidenceSegmentIds:
+        item.evidence_segment_ids.length > 0
+          ? item.evidence_segment_ids
+          : item.source_segment_id
+            ? [item.source_segment_id]
+            : [],
+    })),
+  };
+}
+
+function buildAnalyzeMeetingResponse(input: {
+  meeting: MeetingRow;
+  summary: SummaryRow;
+  actionItems: ActionItemRow[];
+  topics: TopicRow[];
+  alreadyAnalysed: boolean;
+}): AnalyzeMeetingResponse {
+  const meeting = mapMeeting(input.meeting);
+  const metadata = getAnalysisMetadata(meeting);
+
+  return {
+    meeting,
+    summary: mapMeetingSummary(input.summary),
+    topics: input.topics.map(mapMeetingTopic),
+    actionItems: input.actionItems.map(mapActionItem),
+    analysis: buildAnalysisFromRows({
+      summary: input.summary,
+      actionItems: input.actionItems,
+      topics: input.topics,
+    }),
+    provider: "gemini",
+    modelName:
+      getStringMetadata(metadata, "model") ??
+      input.summary.model_name ??
+      "gemini-unknown",
+    responseId: getStringMetadata(metadata, "responseId"),
+    processingTimeMs: getNumberMetadata(metadata, "processingTimeMs"),
+    alreadyAnalysed: input.alreadyAnalysed,
+  };
+}
 
 export class SupabaseMeetingRepository implements MeetingRepository {
   constructor(private readonly client: ScribeFlowSupabaseClient) {}
@@ -167,6 +296,33 @@ export class SupabaseMeetingRepository implements MeetingRepository {
       throw ApiError.conflict(
         "TRANSCRIPTION_ALREADY_RUNNING",
         "This meeting is already being transcribed or is not ready to transcribe.",
+      );
+    }
+
+    return mapMeeting(data);
+  }
+
+  async markAnalysisStarted(meetingId: string): Promise<Meeting> {
+    const { data, error } = await this.client
+      .from("meetings")
+      .update({
+        status: "analysing",
+        error_code: null,
+        error_message: null,
+      })
+      .eq("id", meetingId)
+      .in("status", ["transcribed", "analysing", "completed"])
+      .select("*")
+      .maybeSingle();
+
+    if (error && !isMissingRowError(error)) {
+      throw ApiError.databaseOperationFailed("Could not mark analysis as started.");
+    }
+
+    if (!data) {
+      throw ApiError.conflict(
+        "INVALID_MEETING_STATE",
+        "This meeting is not ready for Gemini analysis.",
       );
     }
 
@@ -362,6 +518,96 @@ export class SupabaseMeetingRepository implements MeetingRepository {
       topics: topicsResult.data ?? [],
       chunkCount: chunksResult.count ?? 0,
     });
+  }
+
+  async getPersistedMeetingAnalysis(
+    meetingId: string,
+    options: { alreadyAnalysed?: boolean } = {},
+  ): Promise<AnalyzeMeetingResponse | null> {
+    const { data: meeting, error: meetingError } = await this.client
+      .from("meetings")
+      .select("*")
+      .eq("id", meetingId)
+      .maybeSingle();
+
+    if (meetingError && !isMissingRowError(meetingError)) {
+      throw ApiError.databaseOperationFailed("Could not retrieve the meeting.");
+    }
+
+    if (!meeting) {
+      return null;
+    }
+
+    const [summaryResult, actionItemsResult, topicsResult] = await Promise.all([
+      this.client
+        .from("meeting_summaries")
+        .select("*")
+        .eq("meeting_id", meetingId)
+        .maybeSingle(),
+      this.client
+        .from("action_items")
+        .select("*")
+        .eq("meeting_id", meetingId)
+        .order("created_at", { ascending: true }),
+      this.client
+        .from("meeting_topics")
+        .select("*")
+        .eq("meeting_id", meetingId)
+        .order("mention_count", { ascending: false }),
+    ]);
+
+    const errors = [
+      summaryResult.error && !isMissingRowError(summaryResult.error)
+        ? summaryResult.error
+        : null,
+      actionItemsResult.error,
+      topicsResult.error,
+    ].filter(Boolean);
+
+    if (errors.length > 0) {
+      throw ApiError.databaseOperationFailed(
+        "Could not retrieve the persisted analysis.",
+      );
+    }
+
+    if (!summaryResult.data) {
+      return null;
+    }
+
+    return buildAnalyzeMeetingResponse({
+      meeting,
+      summary: summaryResult.data,
+      actionItems: actionItemsResult.data ?? [],
+      topics: topicsResult.data ?? [],
+      alreadyAnalysed: options.alreadyAnalysed ?? true,
+    });
+  }
+
+  async persistMeetingAnalysis(input: {
+    meetingId: string;
+    result: Parameters<MeetingRepository["persistMeetingAnalysis"]>[0]["result"];
+  }): Promise<AnalyzeMeetingResponse> {
+    const { error } = await this.client.rpc("persist_meeting_analysis", {
+      p_meeting_id: input.meetingId,
+      p_model_name: input.result.modelName,
+      p_response_id: input.result.responseId ?? "",
+      p_processing_time_ms: input.result.processingTimeMs,
+      p_analysis: input.result.analysis as unknown as Json,
+    });
+
+    if (error) {
+      throw ApiError.analysisPersistenceFailed();
+    }
+
+    const persisted = await this.getPersistedMeetingAnalysis(input.meetingId, {
+      alreadyAnalysed: false,
+    });
+
+    if (!persisted) {
+      throw ApiError.analysisPersistenceFailed();
+    }
+
+    return persisted;
   }
 
   async updateSpeakerName(input: {

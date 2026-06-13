@@ -2,13 +2,16 @@ import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   Meeting,
+  AnalyzeMeetingResponse,
   MeetingDetail,
   NormalizedTranscription,
+  StructuredMeetingAnalysis,
 } from "@scribeflow/shared";
 import { createApp } from "../src/app.js";
 import type { ApiDependencies } from "../src/dependencies.js";
 import type {
   MeetingRepository,
+  MeetingAnalysisService,
   StorageService,
   TranscriptionService,
 } from "../src/services/interfaces.js";
@@ -19,6 +22,41 @@ const speakerId = "22222222-2222-4222-8222-222222222222";
 const actionItemId = "33333333-3333-4333-8333-333333333333";
 
 const now = "2026-06-11T10:30:00.000Z";
+const transcriptSegmentId = "44444444-4444-4444-8444-444444444444";
+
+const structuredAnalysis: StructuredMeetingAnalysis = {
+  attendees: ["Speaker 1"],
+  executiveOverview: "The meeting covered transcript follow-up.",
+  keyDecisions: [
+    {
+      text: "Use the saved transcript.",
+      evidenceSegmentIds: [transcriptSegmentId],
+    },
+  ],
+  discussionPoints: [
+    {
+      text: "Transcript availability was discussed.",
+      evidenceSegmentIds: [transcriptSegmentId],
+    },
+  ],
+  openQuestions: [],
+  nextSteps: [
+    {
+      text: "Share notes.",
+      evidenceSegmentIds: [transcriptSegmentId],
+    },
+  ],
+  topics: ["transcript follow-up"],
+  actionItems: [
+    {
+      task: "Share notes",
+      ownerName: null,
+      deadlineText: null,
+      confidence: 0.81,
+      evidenceSegmentIds: [transcriptSegmentId],
+    },
+  ],
+};
 
 function makeMeeting(overrides: Partial<Meeting> = {}): Meeting {
   return {
@@ -46,6 +84,43 @@ function makeMeeting(overrides: Partial<Meeting> = {}): Meeting {
     errorCode: null,
     errorMessage: null,
     metadata: {},
+    ...overrides,
+  };
+}
+
+function makeTranscribedDetail(overrides: Partial<MeetingDetail> = {}): MeetingDetail {
+  return {
+    meeting: makeMeeting({ status: "transcribed", fileSizeBytes: 1000 }),
+    speakers: [
+      {
+        id: speakerId,
+        meetingId,
+        rawSpeakerIndex: 0,
+        displayName: "Speaker 1",
+        totalSpeakingSeconds: 1,
+        speakingPercentage: 100,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+    transcriptSegments: [
+      {
+        id: transcriptSegmentId,
+        meetingId,
+        speakerId,
+        rawSpeakerIndex: 0,
+        segmentIndex: 0,
+        startMs: 0,
+        endMs: 1000,
+        text: "Hello from the transcript.",
+        confidence: 0.98,
+        words: [],
+      },
+    ],
+    summary: null,
+    actionItems: [],
+    topics: [],
+    chunkCount: 0,
     ...overrides,
   };
 }
@@ -109,7 +184,7 @@ function makeRepository(overrides: Partial<MeetingRepository> = {}) {
       ],
       transcriptSegments: [
         {
-          id: "44444444-4444-4444-8444-444444444444",
+          id: transcriptSegmentId,
           meetingId,
           speakerId,
           rawSpeakerIndex: 0,
@@ -136,6 +211,70 @@ function makeRepository(overrides: Partial<MeetingRepository> = {}) {
       },
       alreadyTranscribed: false,
     })),
+    markAnalysisStarted: vi.fn(async () =>
+      makeMeeting({
+        status: "analysing",
+        fileSizeBytes: 1000,
+      }),
+    ),
+    getPersistedMeetingAnalysis: vi.fn(async () => null),
+    persistMeetingAnalysis: vi.fn(
+      async (
+        input: Parameters<MeetingRepository["persistMeetingAnalysis"]>[0],
+      ): Promise<AnalyzeMeetingResponse> => ({
+        meeting: makeMeeting({
+          status: "completed",
+          fileSizeBytes: 1000,
+          completedAt: now,
+        }),
+        summary: {
+          attendees: input.result.analysis.attendees,
+          executiveOverview: input.result.analysis.executiveOverview,
+          keyDecisions: input.result.analysis.keyDecisions.map((item) => item.text),
+          discussionPoints: input.result.analysis.discussionPoints.map(
+            (item) => item.text,
+          ),
+          openQuestions: input.result.analysis.openQuestions.map((item) => item.text),
+          nextSteps: input.result.analysis.nextSteps.map((item) => item.text),
+          topics: input.result.analysis.topics,
+        },
+        topics: input.result.analysis.topics.map((topic, index) => ({
+          id: `55555555-5555-4555-8555-55555555555${index}`,
+          meetingId,
+          normalizedLabel: topic.toLocaleLowerCase(),
+          displayLabel: topic,
+          confidence: null,
+          mentionCount: 1,
+          createdAt: now,
+          updatedAt: now,
+        })),
+        actionItems: input.result.analysis.actionItems.map((item) => ({
+          id: actionItemId,
+          meetingId,
+          task: item.task,
+          ownerName: item.ownerName,
+          ownerSpeakerId: null,
+          deadline: null,
+          deadlineText: item.deadlineText,
+          status: "open" as const,
+          confidence: item.confidence,
+          sourceSegmentId: item.evidenceSegmentIds[0] ?? null,
+          sourceStartMs: 0,
+          sourceEndMs: 1000,
+          evidenceText: "Hello from the transcript.",
+          evidenceSegmentIds: item.evidenceSegmentIds,
+          completedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        })),
+        analysis: input.result.analysis,
+        provider: "gemini",
+        modelName: input.result.modelName,
+        responseId: input.result.responseId,
+        processingTimeMs: input.result.processingTimeMs,
+        alreadyAnalysed: false,
+      }),
+    ),
     listMeetings: vi.fn(async () => ({
       items: [makeMeeting({ status: "created", fileSizeBytes: 1000 })],
       pagination: {
@@ -181,6 +320,7 @@ function makeRepository(overrides: Partial<MeetingRepository> = {}) {
       sourceStartMs: null,
       sourceEndMs: null,
       evidenceText: null,
+      evidenceSegmentIds: [],
       completedAt: input.status === "completed" ? now : null,
       createdAt: now,
       updatedAt: now,
@@ -258,18 +398,42 @@ function makeTranscriptionService(
   };
 }
 
+function makeMeetingAnalysisService(
+  overrides: Partial<MeetingAnalysisService> = {},
+): MeetingAnalysisService {
+  return {
+    isConfigured: vi.fn(() => true),
+    analyseMeeting: vi.fn(async () => ({
+      analysis: structuredAnalysis,
+      provider: "gemini" as const,
+      modelName: "gemini-2.5-flash",
+      responseId: "gemini-response-123",
+      processingTimeMs: 1234,
+    })),
+    ...overrides,
+  };
+}
+
 function createMockedApp(
   repository = makeRepository(),
   storage = makeStorage(),
   transcriptionService = makeTranscriptionService(),
+  meetingAnalysisService = makeMeetingAnalysisService(),
 ) {
   const dependencies: ApiDependencies = {
     getMeetingRepository: () => repository,
     getStorageService: () => storage,
     getTranscriptionService: () => transcriptionService,
+    getMeetingAnalysisService: () => meetingAnalysisService,
   };
 
-  return { app: createApp(dependencies), repository, storage, transcriptionService };
+  return {
+    app: createApp(dependencies),
+    repository,
+    storage,
+    transcriptionService,
+    meetingAnalysisService,
+  };
 }
 
 describe("Phase 2 persistence API", () => {
@@ -591,6 +755,151 @@ describe("Phase 2 persistence API", () => {
 
       expect(response.body.error.code).toBe("DEEPGRAM_NOT_CONFIGURED");
       expect(unconfiguredRepository.markTranscriptionStarted).not.toHaveBeenCalled();
+    });
+  });
+
+  it("analyzes transcribed meetings and persists summary, topics and action items", async () => {
+    const repository = makeRepository({
+      getMeetingDetail: vi.fn(async () => makeTranscribedDetail()),
+    });
+    const meetingAnalysisService = makeMeetingAnalysisService();
+    const { app } = createMockedApp(
+      repository,
+      makeStorage(),
+      makeTranscriptionService(),
+      meetingAnalysisService,
+    );
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/analyze`)
+        .expect(200);
+
+      expect(response.body.meeting.status).toBe("completed");
+      expect(response.body.summary.executiveOverview).toBe(
+        "The meeting covered transcript follow-up.",
+      );
+      expect(response.body.topics).toHaveLength(1);
+      expect(response.body.actionItems).toHaveLength(1);
+      expect(response.body.actionItems[0]).toMatchObject({
+        task: "Share notes",
+        ownerName: null,
+        deadlineText: null,
+        evidenceSegmentIds: [transcriptSegmentId],
+      });
+      expect(response.body.alreadyAnalysed).toBe(false);
+      expect(repository.markAnalysisStarted).toHaveBeenCalledWith(meetingId);
+      expect(meetingAnalysisService.analyseMeeting).toHaveBeenCalledWith(
+        expect.objectContaining({
+          meeting: expect.objectContaining({ status: "transcribed" }),
+          segments: expect.arrayContaining([
+            expect.objectContaining({ id: transcriptSegmentId }),
+          ]),
+        }),
+      );
+      expect(repository.persistMeetingAnalysis).toHaveBeenCalled();
+    });
+  });
+
+  it("returns persisted analysis without calling Gemini again", async () => {
+    const persisted = await makeRepository().persistMeetingAnalysis({
+      meetingId,
+      result: {
+        analysis: structuredAnalysis,
+        provider: "gemini",
+        modelName: "gemini-2.5-flash",
+        responseId: "persisted-response",
+        processingTimeMs: 100,
+      },
+    });
+    const repository = makeRepository({
+      getMeetingDetail: vi.fn(async () => makeTranscribedDetail()),
+      getPersistedMeetingAnalysis: vi.fn(async () => ({
+        ...persisted,
+        alreadyAnalysed: true,
+      })),
+    });
+    const meetingAnalysisService = makeMeetingAnalysisService();
+    const { app } = createMockedApp(
+      repository,
+      makeStorage(),
+      makeTranscriptionService(),
+      meetingAnalysisService,
+    );
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/analyze`)
+        .expect(200);
+
+      expect(response.body.alreadyAnalysed).toBe(true);
+      expect(response.body.responseId).toBe("persisted-response");
+      expect(meetingAnalysisService.analyseMeeting).not.toHaveBeenCalled();
+      expect(repository.markAnalysisStarted).not.toHaveBeenCalled();
+    });
+  });
+
+  it("rejects missing meetings and meetings without transcript segments", async () => {
+    const missingRepository = makeRepository({
+      getMeetingDetail: vi.fn(async () => null),
+    });
+    const missingApp = createMockedApp(missingRepository).app;
+
+    await withTestServer(missingApp, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/analyze`)
+        .expect(404);
+
+      expect(response.body.error.code).toBe("MEETING_NOT_FOUND");
+    });
+
+    const emptyTranscriptRepository = makeRepository({
+      getMeetingDetail: vi.fn(async () =>
+        makeTranscribedDetail({ transcriptSegments: [] }),
+      ),
+    });
+    const emptyTranscriptApp = createMockedApp(emptyTranscriptRepository).app;
+
+    await withTestServer(emptyTranscriptApp, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/analyze`)
+        .expect(409);
+
+      expect(response.body.error.code).toBe("INVALID_MEETING_STATE");
+      expect(emptyTranscriptRepository.markAnalysisStarted).not.toHaveBeenCalled();
+    });
+  });
+
+  it("marks analysis failures safely while preserving transcript state", async () => {
+    const repository = makeRepository({
+      getMeetingDetail: vi.fn(async () => makeTranscribedDetail()),
+    });
+    const meetingAnalysisService = makeMeetingAnalysisService({
+      analyseMeeting: vi.fn(async () => {
+        throw new Error("provider details should not leak");
+      }),
+    });
+    const { app } = createMockedApp(
+      repository,
+      makeStorage(),
+      makeTranscriptionService(),
+      meetingAnalysisService,
+    );
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/analyze`)
+        .expect(502);
+
+      expect(response.body.error.code).toBe("GEMINI_REQUEST_FAILED");
+      expect(repository.markMeetingFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          meetingId,
+          errorCode: "MEETING_ANALYSIS_OUTPUT_INVALID",
+          errorMessage: "Gemini meeting analysis failed.",
+        }),
+      );
+      expect(repository.persistMeetingAnalysis).not.toHaveBeenCalled();
     });
   });
 });

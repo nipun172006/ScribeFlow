@@ -380,6 +380,92 @@ export function createMeetingRoutes(dependencies: ApiDependencies) {
     },
   );
 
+  router.post(
+    "/meetings/:meetingId/analyze",
+    validateRequest({ params: meetingIdParamsSchema }),
+    async (_req, res, next) => {
+      try {
+        const params = res.locals.params as { meetingId: string };
+        const repository = dependencies.getMeetingRepository();
+        const analysisService = dependencies.getMeetingAnalysisService();
+        const detail = await repository.getMeetingDetail(params.meetingId);
+
+        if (!detail) {
+          throw ApiError.meetingNotFound();
+        }
+
+        const existingAnalysis = await repository.getPersistedMeetingAnalysis(
+          params.meetingId,
+          { alreadyAnalysed: true },
+        );
+
+        if (existingAnalysis) {
+          res.json(existingAnalysis);
+          return;
+        }
+
+        if (detail.transcriptSegments.length === 0) {
+          throw ApiError.conflict(
+            "INVALID_MEETING_STATE",
+            "Gemini analysis requires persisted transcript segments.",
+          );
+        }
+
+        if (
+          !["transcribed", "analysing", "completed"].includes(detail.meeting.status)
+        ) {
+          throw ApiError.conflict(
+            "INVALID_MEETING_STATE",
+            "This meeting is not ready for Gemini analysis.",
+          );
+        }
+
+        if (!analysisService.isConfigured()) {
+          throw ApiError.geminiNotConfigured();
+        }
+
+        await repository.markAnalysisStarted(detail.meeting.id);
+
+        try {
+          const analysisResult = await analysisService.analyseMeeting({
+            meeting: detail.meeting,
+            speakers: detail.speakers,
+            segments: detail.transcriptSegments,
+          });
+          const response = await repository.persistMeetingAnalysis({
+            meetingId: detail.meeting.id,
+            result: analysisResult,
+          });
+
+          res.json(response);
+        } catch (error) {
+          try {
+            await repository.markMeetingFailed({
+              meetingId: detail.meeting.id,
+              errorCode:
+                error instanceof ApiError
+                  ? error.code
+                  : "MEETING_ANALYSIS_OUTPUT_INVALID",
+              errorMessage:
+                error instanceof ApiError
+                  ? error.message
+                  : "Gemini meeting analysis failed.",
+            });
+          } catch (markFailedError) {
+            logger.warn(
+              { err: markFailedError, meetingId: detail.meeting.id },
+              "could not mark analysis failure",
+            );
+          }
+
+          throw error instanceof ApiError ? error : ApiError.geminiRequestFailed();
+        }
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
   router.get(
     "/meetings/:meetingId",
     validateRequest({ params: meetingIdParamsSchema }),

@@ -1,5 +1,6 @@
 import type {
   ActionItem,
+  AnalyzeMeetingResponse,
   Meeting,
   MeetingAnalytics,
   MeetingDetail,
@@ -75,6 +76,7 @@ export interface TranscriptionService {
 }
 
 export interface MeetingAnalysisService {
+  isConfigured(): boolean;
   analyseMeeting(input: {
     meeting: Meeting;
     speakers: MeetingSpeaker[];
@@ -100,9 +102,18 @@ export interface MeetingRepository {
     errorMessage: string;
   }): Promise<Meeting>;
   markTranscriptionStarted(meetingId: string): Promise<Meeting>;
+  markAnalysisStarted(meetingId: string): Promise<Meeting>;
   replaceMeetingTranscription(
     input: ReplaceMeetingTranscriptionInput,
   ): Promise<TranscribeMeetingResponse>;
+  getPersistedMeetingAnalysis(
+    meetingId: string,
+    options?: { alreadyAnalysed?: boolean },
+  ): Promise<AnalyzeMeetingResponse | null>;
+  persistMeetingAnalysis(input: {
+    meetingId: string;
+    result: MeetingAnalysisResult;
+  }): Promise<AnalyzeMeetingResponse>;
   listMeetings(query: MeetingListQuery): Promise<PaginatedMeetingList>;
   getMeetingById(meetingId: string): Promise<Meeting | null>;
   getMeetingDetail(meetingId: string): Promise<MeetingDetail | null>;

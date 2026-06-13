@@ -26,6 +26,14 @@ const transcriptionSql = readFileSync(
   "utf8",
 ).toLowerCase();
 
+const analysisSql = readFileSync(
+  resolve(
+    process.cwd(),
+    "../../supabase/migrations/20260613100000_add_gemini_analysis_persistence.sql",
+  ),
+  "utf8",
+).toLowerCase();
+
 describe("Supabase migration contract", () => {
   it("creates required extensions and tables", () => {
     expect(schemaSql).toContain("create extension if not exists pgcrypto");
@@ -92,5 +100,24 @@ describe("Supabase migration contract", () => {
     expect(transcriptionSql).toContain("set search_path = public, pg_temp");
     expect(transcriptionSql).toContain("revoke all on function");
     expect(transcriptionSql).not.toContain("create policy");
+  });
+
+  it("adds atomic Gemini analysis persistence with evidence IDs", () => {
+    expect(analysisSql).toContain("add column if not exists evidence_segment_ids");
+    expect(analysisSql).toContain("using gin (evidence_segment_ids)");
+    expect(analysisSql).toContain(
+      "create or replace function public.persist_meeting_analysis",
+    );
+    expect(analysisSql).toContain("set search_path = public, pg_temp");
+    expect(analysisSql).toContain("v_current_status <> 'analysing'");
+    expect(analysisSql).toContain("references unknown transcript segment ids");
+    expect(analysisSql).toContain("insert into public.meeting_summaries");
+    expect(analysisSql).toContain("insert into public.meeting_topics");
+    expect(analysisSql).toContain("insert into public.action_items");
+    expect(analysisSql).toContain("status = 'completed'");
+    expect(analysisSql).toContain("'provider'");
+    expect(analysisSql).toContain("'gemini'");
+    expect(analysisSql).toContain("revoke all on function");
+    expect(analysisSql).not.toContain("create policy");
   });
 });

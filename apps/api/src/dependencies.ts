@@ -1,7 +1,9 @@
 import { createSupabaseClient } from "./config/supabaseClient.js";
 import { SupabaseMeetingRepository } from "./repositories/supabaseMeetingRepository.js";
 import { DeepgramTranscriptionService } from "./services/deepgramTranscriptionService.js";
+import { GeminiMeetingAnalysisService } from "./services/geminiMeetingAnalysisService.js";
 import type {
+  MeetingAnalysisService,
   MeetingRepository,
   StorageService,
   TranscriptionService,
@@ -12,6 +14,7 @@ export type ApiDependencies = {
   getMeetingRepository: () => MeetingRepository;
   getStorageService: () => StorageService;
   getTranscriptionService: () => TranscriptionService;
+  getMeetingAnalysisService: () => MeetingAnalysisService;
 };
 
 export function createApiDependencies(): ApiDependencies {
@@ -19,5 +22,6 @@ export function createApiDependencies(): ApiDependencies {
     getMeetingRepository: () => new SupabaseMeetingRepository(createSupabaseClient()),
     getStorageService: () => new SupabaseStorageService(createSupabaseClient()),
     getTranscriptionService: () => new DeepgramTranscriptionService(),
+    getMeetingAnalysisService: () => new GeminiMeetingAnalysisService(),
   };
 }

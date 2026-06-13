@@ -4,11 +4,11 @@ ScribeFlow is a university GenAI project for a premium AI meeting-intelligence p
 
 ## Current Status
 
-This repository is in Phase 4A Part 1. It contains the Phase 1 monorepo foundation, the Phase 2 Supabase persistence and private upload foundation, Phase 3 uploaded-audio transcription through Deepgram Nova-3 with batch diarisation, and a backend-only Gemini structured-analysis proof.
+This repository is in Phase 4A Part 2. It contains the Phase 1 monorepo foundation, the Phase 2 Supabase persistence and private upload foundation, Phase 3 uploaded-audio transcription through Deepgram Nova-3 with batch diarisation, and backend Gemini structured analysis persistence.
 
 Uploading a recording stores meeting metadata, uploads audio directly to private Supabase Storage through signed TUS, verifies storage metadata, then `POST /api/meetings/:meetingId/transcribe` creates a backend-only signed download URL, calls Deepgram with `diarize_model=latest`, normalizes speakers and transcript segments, and persists the meeting in `transcribed` status.
 
-Gemini structured analysis can be run manually through `npm run verify:gemini` against the latest transcribed meeting. The result is validated but intentionally not persisted yet. Gemini embeddings, RAG search, live microphone streaming and cross-meeting analytics are still intentionally unimplemented.
+Gemini structured analysis can be run through `POST /api/meetings/:meetingId/analyze` for transcribed meetings. The endpoint validates evidence segment IDs, persists summary/topics/action items atomically, marks the meeting `completed`, and is idempotent when analysis already exists. Gemini embeddings, RAG search, live microphone streaming and cross-meeting analytics are still intentionally unimplemented.
 
 ## Repository Structure
 
@@ -78,7 +78,7 @@ Provider variables:
 - `GEMINI_EMBEDDING_DIMENSIONS`
 
 Deepgram is used only by the backend. No Deepgram key or signed Supabase download URL is sent to the browser.
-Gemini is used only by the backend verifier/service in Phase 4A Part 1. No Gemini key is sent to the browser, and verifier output is not saved to Supabase yet.
+Gemini is used only by the backend service and verifier scripts. No Gemini key is sent to the browser.
 
 Demo verification variables:
 
@@ -120,6 +120,7 @@ npm run start --workspace @scribeflow/api
 npm run verify:supabase-cloud
 npm run verify:deepgram
 npm run verify:gemini
+npm run verify:gemini:persist
 npm run evaluate:wer -- --reference <path> --hypothesis <path>
 ```
 
@@ -146,6 +147,11 @@ API and Gemini key. It finds the latest `transcribed` meeting, fetches its
 persisted transcript, calls Gemini with text-only segments and a strict JSON
 schema, validates evidence segment IDs, and prints safe counts without saving
 the analysis or changing meeting status.
+
+`npm run verify:gemini:persist` is an opt-in persistence verifier for a real
+running API, Supabase project and Gemini key. It calls the analyze endpoint,
+confirms summary/topics/action items are persisted, validates evidence segment
+IDs against transcript rows, and calls the endpoint again to confirm idempotency.
 
 ## Development Commands
 
@@ -181,9 +187,11 @@ Implemented in Phase 3:
 
 - `POST /api/meetings/:meetingId/transcribe`
 
-Implemented as a backend-only Phase 4A Part 1 proof:
+Implemented in Phase 4A:
 
 - Gemini structured analysis service and `npm run verify:gemini`
+- `POST /api/meetings/:meetingId/analyze`
+- Atomic Gemini analysis persistence and `npm run verify:gemini:persist`
 
 Still intentionally unimplemented with typed `501` errors:
 
@@ -224,18 +232,18 @@ Processing page
 
 Deepgram failures return explicit API errors and can mark the meeting failed with a safe message. The app never silently replaces failed transcription with fixtures.
 
-## Gemini Analysis Proof
+## Gemini Analysis Persistence
 
 ```text
-Verifier script
-  -> API reads the latest transcribed meeting
-  -> API returns persisted speakers and transcript segments
+POST /api/meetings/:id/analyze
+  -> API reads persisted speakers and transcript segments
   -> Gemini receives only text segments, speaker names and meeting metadata
   -> Backend validates schema and evidence segment IDs
-  -> Verifier prints safe counts and evidence IDs without saving results
+  -> Supabase RPC persists summary, topics and action items atomically
+  -> API returns the persisted analysis
 ```
 
-Gemini analysis is not wired to an API route or frontend workflow yet. Phase 4A Part 1 proves the provider boundary and validation path only; persistence of summaries, action items and topics remains a later controlled phase.
+The endpoint does not send audio to Gemini and does not expose Gemini credentials. If a meeting already has a persisted summary, the endpoint returns the existing analysis without calling Gemini again.
 
 ## Frontend Routes
 
@@ -252,7 +260,8 @@ Unknown routes render a designed not-found state.
 ## Known Unfinished Features
 
 - Deepgram live transcription.
-- Persisted Gemini summaries, action items and embeddings.
+- Frontend UI for persisted Gemini summaries and action items.
+- Gemini embeddings.
 - Semantic/hybrid RAG retrieval.
 - Cross-meeting analytics calculations.
 - Authentication.

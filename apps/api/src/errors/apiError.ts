@@ -203,6 +203,14 @@ export class ApiError extends Error {
     return new ApiError(502, "MEETING_ANALYSIS_OUTPUT_INVALID", message);
   }
 
+  static analysisPersistenceFailed() {
+    return new ApiError(
+      500,
+      "ANALYSIS_PERSISTENCE_FAILED",
+      "Could not persist the Gemini meeting analysis.",
+    );
+  }
+
   static noSpeechDetected() {
     return new ApiError(
       422,

@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type {
   actionItemSchema,
   actionItemStatusSchema,
+  analyzeMeetingResponseSchema,
   apiErrorCodeSchema,
   apiErrorResponseSchema,
   meetingDetailSchema,
@@ -52,6 +53,7 @@ export type NormalizedTranscription = z.infer<typeof normalizedTranscriptionSche
 export type TranscriptionSummary = z.infer<typeof transcriptionSummarySchema>;
 export type ActionItemStatus = z.infer<typeof actionItemStatusSchema>;
 export type ActionItem = z.infer<typeof actionItemSchema>;
+export type AnalyzeMeetingResponse = z.infer<typeof analyzeMeetingResponseSchema>;
 export type MeetingSummary = z.infer<typeof meetingSummarySchema>;
 export type StructuredMeetingAnalysis = z.infer<typeof structuredMeetingAnalysisSchema>;
 export type StructuredAnalysisActionItem = z.infer<
