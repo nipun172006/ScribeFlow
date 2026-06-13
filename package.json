@@ -32,6 +32,7 @@
     "verify:deepgram": "node apps/api/scripts/verifyDeepgramTranscription.mjs",
     "verify:gemini": "node apps/api/scripts/verifyGeminiAnalysis.mjs",
     "verify:gemini:persist": "node apps/api/scripts/verifyGeminiAnalysisPersistence.mjs",
+    "verify:rag": "node apps/api/scripts/verifyRag.mjs",
     "evaluate:wer": "node apps/api/scripts/evaluateWer.mjs"
   },
   "devDependencies": {

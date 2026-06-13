@@ -427,6 +427,23 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      match_meeting_chunks: {
+        Args: {
+          p_match_count?: number;
+          p_match_threshold?: number;
+          p_query_embedding: string;
+        };
+        Returns: {
+          content: string;
+          end_ms: number;
+          id: string;
+          meeting_id: string;
+          metadata: Json;
+          similarity: number;
+          speaker_names: string[];
+          start_ms: number;
+        }[];
+      };
       persist_meeting_analysis: {
         Args: {
           p_analysis: Json;

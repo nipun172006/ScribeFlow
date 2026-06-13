@@ -425,6 +425,12 @@ function createMockedApp(
     getStorageService: () => storage,
     getTranscriptionService: () => transcriptionService,
     getMeetingAnalysisService: () => meetingAnalysisService,
+    getMeetingIndexingService: () => {
+      throw new Error("getMeetingIndexingService not implemented in test");
+    },
+    getMeetingSearchService: () => {
+      throw new Error("getMeetingSearchService not implemented in test");
+    },
   };
 
   return {
