@@ -157,3 +157,26 @@ export function updateActionItemStatus(
     body: JSON.stringify(input),
   });
 }
+
+export type SearchResultItem = {
+  meetingId: string;
+  meetingTitle: string;
+  chunkText: string;
+  chunkKind: string;
+  similarityScore: number;
+  startMs: number | null;
+  endMs: number | null;
+  speakerNames: string[];
+  sourceSegmentIds: string[];
+};
+
+export type SearchResponse = {
+  results: SearchResultItem[];
+};
+
+export function searchMeetings(query: string, limit: number = 10) {
+  return jsonRequest<SearchResponse>("/search", {
+    method: "POST",
+    body: JSON.stringify({ query, limit }),
+  });
+}
