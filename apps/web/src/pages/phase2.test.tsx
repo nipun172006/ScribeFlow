@@ -571,4 +571,52 @@ describe("Phase 2 frontend integration", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /run analysis/i })).toBeInTheDocument();
   });
+
+  it("jumps to transcript segment automatically if segmentId is in URL", async () => {
+    const targetSegmentId = "44444444-4444-4444-8444-444444444444";
+    apiClient.getMeetingDetail.mockResolvedValue({
+      meeting: makeMeeting({ status: "completed" }),
+      speakers: [],
+      transcriptSegments: [
+        {
+          id: targetSegmentId,
+          meetingId,
+          speakerId: null,
+          rawSpeakerIndex: 0,
+          segmentIndex: 0,
+          startMs: 0,
+          endMs: 3000,
+          text: "This segment should be highlighted.",
+          confidence: 0.95,
+          words: [],
+        },
+      ],
+      summary: null,
+      actionItems: [],
+      topics: [],
+      chunkCount: 0,
+    } satisfies MeetingDetail);
+
+    renderWithProviders(
+      <MemoryRouter
+        initialEntries={[`/meetings/${meetingId}?segmentId=${targetSegmentId}`]}
+      >
+        <Routes>
+          <Route path="/meetings/:meetingId" element={<MeetingDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // Should switch to transcript tab automatically
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: /transcript/i })).toHaveAttribute(
+        "data-state",
+        "active",
+      );
+    });
+    expect(screen.getByText("This segment should be highlighted.")).toBeInTheDocument();
+
+    // Verify it attempted to scroll
+    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+  });
 });

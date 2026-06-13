@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
@@ -52,11 +52,13 @@ const summarySections = [
 
 export function MeetingDetailPage() {
   const { meetingId } = useParams();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [transcriptQuery, setTranscriptQuery] = useState("");
   const [speakerFilter, setSpeakerFilter] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
   const [highlightedSegmentId, setHighlightedSegmentId] = useState<string | null>(null);
+  const [hasScrolledToUrlSegment, setHasScrolledToUrlSegment] = useState(false);
   const meetingQuery = useQuery({
     queryKey: ["meeting-detail", meetingId],
     queryFn: () => getMeetingDetail(meetingId ?? ""),
@@ -179,6 +181,19 @@ export function MeetingDetailPage() {
       setHighlightedSegmentId((current) => (current === segmentId ? null : current));
     }, 4500);
   }, []);
+
+  useEffect(() => {
+    if (!detail || hasScrolledToUrlSegment) return;
+
+    const searchParams = new URLSearchParams(location.search);
+    const segmentIdFromUrl = searchParams.get("segmentId");
+
+    if (segmentIdFromUrl) {
+      handleEvidenceJump(segmentIdFromUrl);
+    }
+
+    setHasScrolledToUrlSegment(true);
+  }, [detail, hasScrolledToUrlSegment, handleEvidenceJump, location.search]);
 
   return (
     <div className="space-y-8">

@@ -34,25 +34,28 @@ describe("GlobalSearchPage", () => {
 
   it("calls API and shows loading state, then results", async () => {
     const mockSearch = vi.mocked(apiClient.searchMeetings);
-    mockSearch.mockImplementationOnce(() => new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          results: [
-            {
-              meetingId: "123",
-              meetingTitle: "Test Meeting",
-              chunkText: "This is a test chunk",
-              chunkKind: "key_decision",
-              similarityScore: 0.85,
-              startMs: 1000,
-              endMs: 2000,
-              speakerNames: ["John"],
-              sourceSegmentIds: ["seg-1"],
-            },
-          ],
-        });
-      }, 10);
-    }));
+    mockSearch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              results: [
+                {
+                  meetingId: "123",
+                  meetingTitle: "Test Meeting",
+                  chunkText: "This is a test chunk",
+                  chunkKind: "key_decision",
+                  similarityScore: 0.85,
+                  startMs: 1000,
+                  endMs: 2000,
+                  speakerNames: ["John"],
+                  sourceSegmentIds: ["seg-1"],
+                },
+              ],
+            });
+          }, 10);
+        }),
+    );
 
     renderWithProviders(<GlobalSearchPage />);
     const input = screen.getByRole("searchbox");
