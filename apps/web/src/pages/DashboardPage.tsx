@@ -1,21 +1,14 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import {
-  BarChart3,
-  CheckCircle2,
-  Clock3,
-  FileAudio,
-  Library,
-  Plus,
-  Tags,
-} from "lucide-react";
+import { useQuery, useQueries } from "@tanstack/react-query";
+import { CheckCircle2, Clock3, FileAudio, Library, Plus, Tags } from "lucide-react";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { MeetingRow } from "../components/MeetingRow";
 import { MetricCard } from "../components/MetricCard";
 import { PageHeader } from "../components/PageHeader";
-import { listMeetings } from "../lib/apiClient";
+import { listMeetings, getMeetingDetail } from "../lib/apiClient";
 
 export function DashboardPage() {
   const recentMeetingsQuery = useQuery({
@@ -23,13 +16,77 @@ export function DashboardPage() {
     queryFn: () =>
       listMeetings({
         page: 1,
-        pageSize: 5,
+        pageSize: 20,
         sort: "createdAt",
         order: "desc",
       }),
   });
 
-  const recentMeetings = recentMeetingsQuery.data?.items ?? [];
+  const recentMeetings = useMemo(
+    () => recentMeetingsQuery.data?.items ?? [],
+    [recentMeetingsQuery.data?.items],
+  );
+  const totalMeetings = recentMeetingsQuery.data?.pagination.totalItems ?? 0;
+
+  const completedMeetings = useMemo(
+    () =>
+      recentMeetings.filter((m) => m.status === "completed" || m.status === "indexing"),
+    [recentMeetings],
+  );
+
+  const detailsQueries = useQueries({
+    queries: completedMeetings.slice(0, 10).map((m) => ({
+      queryKey: ["meeting-detail", m.id],
+      queryFn: () => getMeetingDetail(m.id),
+      staleTime: 60000,
+    })),
+  });
+
+  const details = useMemo(() => {
+    return detailsQueries.map((q) => q.data).filter((d) => d != null);
+  }, [detailsQueries]);
+
+  const metrics = useMemo(() => {
+    const totalHours =
+      recentMeetings.reduce((acc, m) => acc + (m.durationSeconds ?? 0), 0) / 3600;
+
+    let openActions = 0;
+    let completedActions = 0;
+    let totalChunks = 0;
+    const topicCounts = new Map<string, number>();
+
+    for (const detail of details) {
+      totalChunks += detail.chunkCount ?? 0;
+      for (const action of detail.actionItems) {
+        if (action.status === "open") openActions++;
+        if (action.status === "completed") completedActions++;
+      }
+      for (const topic of detail.topics) {
+        topicCounts.set(
+          topic.displayLabel,
+          (topicCounts.get(topic.displayLabel) || 0) + topic.mentionCount,
+        );
+      }
+    }
+
+    const completionRate =
+      openActions + completedActions > 0
+        ? Math.round((completedActions / (openActions + completedActions)) * 100)
+        : null;
+
+    const topTopics = Array.from(topicCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+
+    return {
+      totalHours,
+      openActions,
+      completedActions,
+      completionRate,
+      totalChunks,
+      topTopics,
+    };
+  }, [recentMeetings, details]);
 
   return (
     <div className="space-y-8">
@@ -54,27 +111,39 @@ export function DashboardPage() {
       >
         <MetricCard
           label="Total meetings"
-          value="0"
-          detail="No processed meetings yet"
+          value={totalMeetings.toString()}
+          detail={
+            totalMeetings > 0
+              ? `${completedMeetings.length} completed`
+              : "No processed meetings yet"
+          }
           icon={<Library size={18} aria-hidden="true" />}
         />
         <MetricCard
           label="Meeting hours"
-          value="0h"
-          detail="Duration will be calculated from transcripts"
+          value={`${metrics.totalHours.toFixed(1)}h`}
+          detail="Calculated from recent transcripts"
           icon={<Clock3 size={18} aria-hidden="true" />}
         />
         <MetricCard
           label="Open action items"
-          value="0"
-          detail="No extracted tasks yet"
-          icon={<FileAudio size={18} aria-hidden="true" />}
+          value={metrics.openActions.toString()}
+          detail={
+            metrics.openActions > 0
+              ? `${metrics.completedActions} completed`
+              : "No extracted tasks yet"
+          }
+          icon={<CheckCircle2 size={18} aria-hidden="true" />}
         />
         <MetricCard
-          label="Completion rate"
-          value="--"
-          detail="Available after action items exist"
-          icon={<CheckCircle2 size={18} aria-hidden="true" />}
+          label="Searchable chunks"
+          value={metrics.totalChunks.toString()}
+          detail={
+            metrics.totalChunks > 0
+              ? "Indexed for semantic search"
+              : "Available after indexing"
+          }
+          icon={<FileAudio size={18} aria-hidden="true" />}
         />
       </section>
 
@@ -120,7 +189,7 @@ export function DashboardPage() {
           ) : null}
           {recentMeetings.length > 0 ? (
             <div className="space-y-3">
-              {recentMeetings.map((meeting) => (
+              {recentMeetings.slice(0, 5).map((meeting) => (
                 <MeetingRow key={meeting.id} meeting={meeting} />
               ))}
             </div>
@@ -131,24 +200,27 @@ export function DashboardPage() {
           <h2 id="recurring-topics" className="text-lg font-semibold">
             Recurring topics
           </h2>
-          <EmptyState
-            icon={<Tags size={20} aria-hidden="true" />}
-            title="No topics detected"
-            message="Topics will appear here after meetings have completed Gemini analysis. Cross-meeting aggregation remains a later phase."
-          />
+          {metrics.topTopics.length === 0 ? (
+            <EmptyState
+              icon={<Tags size={20} aria-hidden="true" />}
+              title="No topics detected"
+              message="Topics will appear here after meetings have completed Gemini analysis. Cross-meeting aggregation works from recent analysed meetings."
+            />
+          ) : (
+            <div className="flex flex-wrap gap-2 rounded-card border border-border bg-surface p-5">
+              {metrics.topTopics.map(([topic, count]) => (
+                <span
+                  key={topic}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-raised px-3 py-1 text-sm font-medium text-primary shadow-soft"
+                >
+                  {topic}
+                  <span className="text-xs text-muted tabular-nums">({count})</span>
+                </span>
+              ))}
+            </div>
+          )}
         </section>
       </div>
-
-      <section className="space-y-4" aria-labelledby="activity-preview">
-        <h2 id="activity-preview" className="text-lg font-semibold">
-          Activity preview
-        </h2>
-        <EmptyState
-          icon={<BarChart3 size={20} aria-hidden="true" />}
-          title="Analytics are waiting for meeting records"
-          message="Speaking distribution, action item trends and completion rates will use deterministic calculations from persisted meeting data."
-        />
-      </section>
     </div>
   );
 }
