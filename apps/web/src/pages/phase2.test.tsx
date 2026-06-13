@@ -631,6 +631,7 @@ describe("Phase 2 frontend integration", () => {
       static isTypeSupported = vi.fn(() => true);
 
       state = "inactive";
+      onstart: (() => void) | null = null;
       ondataavailable: ((event: { data: Blob }) => void) | null = null;
       onstop: (() => void) | null = null;
       onerror: ((event: Event) => void) | null = null;
@@ -646,6 +647,7 @@ describe("Phase 2 frontend integration", () => {
 
       start() {
         this.state = "recording";
+        this.onstart?.();
       }
 
       stop() {
@@ -710,6 +712,10 @@ describe("Phase 2 frontend integration", () => {
       // 4. Stop recording appears
       const stopButton = await screen.findByRole("button", { name: /stop recording/i });
       expect(stopButton).toBeInTheDocument();
+      expect(screen.getByText("00:00")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByText("00:01")).toBeInTheDocument(), {
+        timeout: 2000,
+      });
 
       // 5. click Stop recording
       await user.click(stopButton);
@@ -746,6 +752,39 @@ describe("Phase 2 frontend integration", () => {
           mimeType: "audio/webm",
         }),
       );
+    });
+
+    it("can discard a bad live recording and start again", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <MemoryRouter>
+          <NewMeetingPage />
+        </MemoryRouter>,
+      );
+
+      await user.click(screen.getByRole("tab", { name: /record live/i }));
+      await user.click(screen.getByRole("button", { name: /start recording/i }));
+      const firstStopButton = await screen.findByRole("button", {
+        name: /stop recording/i,
+      });
+      await user.click(firstStopButton);
+
+      expect(await screen.findByRole("button", { name: /use recording/i }));
+      expect(document.querySelector("audio")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /discard recording/i }));
+
+      expect(document.querySelector("audio")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /use recording/i })).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: /start recording/i }),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /start recording/i }));
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(2);
+      expect(
+        await screen.findByRole("button", { name: /stop recording/i }),
+      ).toBeInTheDocument();
     });
 
     it("shows error if getUserMedia fails", async () => {

@@ -1,19 +1,26 @@
 :root {
-  --sf-bg: 10 10 11;
-  --sf-surface: 18 18 20;
-  --sf-surface-raised: 25 25 28;
-  --sf-border: 62 65 70;
-  --sf-text-primary: 245 247 250;
-  --sf-text-muted: 161 166 176;
-  --sf-accent: 45 212 191;
-  --sf-accent-contrast: 4 47 46;
+  --font-display: "Inter", "SF Pro Display", "General Sans", "Satoshi", sans-serif;
+  --font-body: "Inter", "SF Pro Text", "Satoshi", system-ui, sans-serif;
+  --font-ui: "Inter", "SF Pro Text", "General Sans", system-ui, sans-serif;
+  --font-metric: "Cabinet Grotesk", "Inter", "SF Pro Display", sans-serif;
+  --sf-bg: 7 10 18;
+  --sf-surface: 15 21 34;
+  --sf-surface-raised: 24 32 48;
+  --sf-border: 63 75 99;
+  --sf-text-primary: 241 245 249;
+  --sf-text-muted: 178 187 204;
+  --sf-accent: 54 211 194;
+  --sf-accent-contrast: 4 8 18;
   --sf-success: 52 211 153;
   --sf-warning: 251 191 36;
   --sf-danger: 248 113 113;
-  --sf-radius-control: 6px;
-  --sf-radius-card: 8px;
-  --sf-radius-panel: 8px;
-  --sf-shadow-soft: 0 18px 55px rgb(0 0 0 / 0.34);
+  --sf-cyan: 34 211 238;
+  --sf-blue: 96 165 250;
+  --sf-rose: 251 113 133;
+  --sf-radius-control: 16px;
+  --sf-radius-card: 24px;
+  --sf-radius-panel: 28px;
+  --sf-shadow-soft: 0 24px 72px rgb(0 0 0 / 0.34);
   --sf-motion-fast: 140ms;
   --sf-motion-normal: 220ms;
 }

@@ -202,7 +202,7 @@ export function MeetingDetailPage() {
         title={meeting?.title ?? "Meeting detail"}
         description={
           meeting
-            ? "Persisted metadata and future AI outputs are shown from Supabase-backed API responses."
+            ? "Persisted metadata, transcript, summary, actions and analytics are shown from Supabase-backed API responses."
             : `Record ${meetingId ?? "unknown"} is being loaded from the API.`
         }
         actions={meeting ? <StatusBadge status={meeting.status} /> : null}
@@ -460,7 +460,8 @@ export function MeetingDetailPage() {
                     </h2>
                     <p className="mt-1 text-sm leading-6 text-muted">
                       Calculated deterministically from persisted Deepgram word
-                      timestamps. Cross-meeting analytics remain a later phase.
+                      timestamps. Cross-meeting trends are available on the Analytics
+                      page.
                     </p>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-3">
@@ -572,7 +573,7 @@ export function MeetingDetailPage() {
                 <EmptyState
                   icon={<UsersRound size={20} aria-hidden="true" />}
                   title="No speaker analytics yet"
-                  message={`Persisted speakers: ${detail.speakers.length}. Transcript chunks indexed for future RAG: ${detail.chunkCount}. Run uploaded-audio transcription to populate speaker timing.`}
+                  message={`Persisted speakers: ${detail.speakers.length}. Transcript chunks indexed for semantic search: ${detail.chunkCount}. Run uploaded-audio transcription to populate speaker timing.`}
                 />
               )}
             </Tabs.Content>

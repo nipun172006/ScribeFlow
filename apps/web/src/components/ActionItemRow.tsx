@@ -20,7 +20,7 @@ export function ActionItemRow({
     item.sourceSegmentId ?? item.evidenceSegmentIds?.[0] ?? null;
 
   return (
-    <article className="rounded-card border border-border bg-surface p-4">
+    <article className="rounded-card border border-white/10 bg-white/[0.055] p-4 shadow-soft backdrop-blur-xl">
       <div className="flex items-start gap-3">
         {onStatusChange ? (
           <button
@@ -65,7 +65,7 @@ export function ActionItemRow({
             <button
               type="button"
               onClick={() => onEvidenceClick?.(primaryEvidenceSegmentId)}
-              className="mt-3 inline-flex items-center gap-2 rounded-control border border-border bg-surface-raised px-3 py-1.5 text-xs font-semibold text-primary hover:border-accent/70"
+              className="mt-3 inline-flex items-center gap-2 rounded-control border border-white/10 bg-white/[0.055] px-3 py-1.5 text-xs font-semibold text-primary hover:border-accent/70"
             >
               <LocateFixed size={14} aria-hidden="true" />
               Jump to evidence

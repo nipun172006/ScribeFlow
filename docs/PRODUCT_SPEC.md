@@ -4,7 +4,7 @@
 
 University teams often record project meetings but lose decisions, owners, deadlines and rationale inside long audio files. ScribeFlow is a premium meeting-intelligence workspace that turns meeting audio into structured, searchable knowledge while preserving source timestamps for trust.
 
-Phase 3 establishes real uploaded-audio transcription using Deepgram Nova-3 and batch diarisation. ScribeFlow now persists speaker records, transcript segments and deterministic speaker timing for uploaded meetings. It does not yet implement Gemini summaries, action extraction, embeddings, RAG search or live microphone transcription.
+ScribeFlow supports uploaded audio and browser live recording. It persists Deepgram speaker-labelled transcripts, Gemini summaries and action items, deterministic meeting analytics, and semantic search evidence for demo and viva review.
 
 ## Target User
 
@@ -22,7 +22,7 @@ Phase 3 establishes real uploaded-audio transcription using Deepgram Nova-3 and 
 6. Review action items with owner, deadline, status and transcript evidence.
 7. Search across prior meetings using natural language.
 8. Review analytics for meeting volume, speaking time, action completion and recurring topics.
-9. Start a live microphone meeting session in a later phase.
+9. Record live microphone audio in the browser and process it after recording stops.
 
 ## Core Features
 

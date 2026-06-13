@@ -18,7 +18,7 @@ describe("ScribeFlow routes", () => {
 
     expect(
       screen.getByRole("heading", {
-        name: /meeting intelligence, ready for real processing/i,
+        name: /meeting intelligence, ready for every recording/i,
       }),
     ).toBeInTheDocument();
     expect(

@@ -16,12 +16,43 @@ import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { listMeetings, getMeetingDetail } from "../lib/apiClient";
 
+const chartTheme = {
+  grid: "rgba(148, 163, 184, 0.18)",
+  tick: "rgba(226, 232, 240, 0.76)",
+  axis: "rgba(148, 163, 184, 0.18)",
+  cursor: "rgba(54, 211, 194, 0.08)",
+  primary: "#36d6c2",
+  secondary: "#8b8cf6",
+  tooltip: {
+    background: "rgba(15, 23, 42, 0.96)",
+    border: "1px solid rgba(148, 163, 184, 0.24)",
+    borderRadius: "14px",
+    color: "#f8fafc",
+    boxShadow: "0 20px 60px rgba(0, 0, 0, 0.42)",
+  },
+  tooltipLabel: {
+    color: "#f8fafc",
+    fontWeight: 600,
+  },
+  tooltipItem: {
+    color: "#dbeafe",
+  },
+} as const;
+
 function AnalyticsPanel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-card border border-border bg-surface p-5">
-      <h2 className="text-base font-semibold text-primary">{title}</h2>
+    <section className="rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl">
+      <h2 className="font-display text-lg font-semibold text-primary">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>
+  );
+}
+
+function ChartFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="h-64 rounded-card border border-white/10 bg-surface-raised/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      {children}
+    </div>
   );
 }
 
@@ -128,40 +159,61 @@ export function AnalyticsPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <AnalyticsPanel title="Meetings over time">
           {metrics.chartData.length === 0 ? (
-            <div className="h-64 rounded-card border border-border/70 bg-background/50 p-3">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={[]}>
-                  <CartesianGrid stroke="rgb(62 65 70)" strokeDasharray="3 3" />
-                  <XAxis dataKey="name" stroke="rgb(161 166 176)" />
-                  <YAxis stroke="rgb(161 166 176)" />
-                </BarChart>
-              </ResponsiveContainer>
-              <p className="mt-3 text-sm text-muted">No meeting records available.</p>
-            </div>
+            <ChartFrame>
+              <div className="flex h-full flex-col">
+                <div className="min-h-0 flex-1">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={[]}>
+                      <CartesianGrid stroke={chartTheme.grid} vertical={false} />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fill: chartTheme.tick, fontSize: 12 }}
+                        axisLine={{ stroke: chartTheme.axis }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: chartTheme.tick, fontSize: 12 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <p className="pt-3 text-sm text-muted">No meeting records available.</p>
+              </div>
+            </ChartFrame>
           ) : (
-            <div className="h-64 rounded-card border border-border/70 bg-background/50 p-3">
+            <ChartFrame>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={metrics.chartData}>
-                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+                  <CartesianGrid stroke={chartTheme.grid} vertical={false} />
                   <XAxis
                     dataKey="name"
-                    stroke="var(--muted)"
-                    fontSize={12}
+                    tick={{ fill: chartTheme.tick, fontSize: 12 }}
+                    axisLine={{ stroke: chartTheme.axis }}
+                    tickLine={false}
                     tickMargin={8}
                   />
-                  <YAxis stroke="var(--muted)" fontSize={12} allowDecimals={false} />
-                  <Tooltip
-                    cursor={{ fill: "var(--surface-raised)" }}
-                    contentStyle={{
-                      backgroundColor: "var(--surface)",
-                      borderColor: "var(--border)",
-                      borderRadius: "6px",
-                    }}
+                  <YAxis
+                    tick={{ fill: chartTheme.tick, fontSize: 12 }}
+                    axisLine={false}
+                    tickLine={false}
+                    allowDecimals={false}
                   />
-                  <Bar dataKey="value" fill="var(--accent)" radius={[4, 4, 0, 0]} />
+                  <Tooltip
+                    cursor={{ fill: chartTheme.cursor }}
+                    contentStyle={chartTheme.tooltip}
+                    labelStyle={chartTheme.tooltipLabel}
+                    itemStyle={chartTheme.tooltipItem}
+                  />
+                  <Bar
+                    dataKey="value"
+                    fill={chartTheme.primary}
+                    radius={[8, 8, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </ChartFrame>
           )}
         </AnalyticsPanel>
 
@@ -173,36 +225,39 @@ export function AnalyticsPage() {
               message="Speaking time will appear here after meetings are transcribed."
             />
           ) : (
-            <div className="h-64 rounded-card border border-border/70 bg-background/50 p-3">
+            <ChartFrame>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={metrics.speakerData} layout="vertical">
-                  <CartesianGrid
-                    stroke="var(--border)"
-                    strokeDasharray="3 3"
-                    horizontal={false}
+                  <CartesianGrid stroke={chartTheme.grid} horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tick={{ fill: chartTheme.tick, fontSize: 12 }}
+                    axisLine={false}
+                    tickLine={false}
                   />
-                  <XAxis type="number" stroke="var(--muted)" fontSize={12} />
                   <YAxis
                     dataKey="name"
                     type="category"
-                    stroke="var(--muted)"
-                    fontSize={12}
+                    tick={{ fill: chartTheme.tick, fontSize: 12 }}
+                    axisLine={false}
+                    tickLine={false}
                     width={80}
                   />
                   <Tooltip
-                    cursor={{ fill: "var(--surface-raised)" }}
-                    contentStyle={{
-                      backgroundColor: "var(--surface)",
-                      borderColor: "var(--border)",
-                      borderRadius: "6px",
-                    }}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    formatter={(value: any) => [`${value} min`, "Speaking time"]}
+                    cursor={{ fill: chartTheme.cursor }}
+                    contentStyle={chartTheme.tooltip}
+                    labelStyle={chartTheme.tooltipLabel}
+                    itemStyle={chartTheme.tooltipItem}
+                    formatter={(value: unknown) => [`${value} min`, "Speaking time"]}
                   />
-                  <Bar dataKey="minutes" fill="var(--success)" radius={[0, 4, 4, 0]} />
+                  <Bar
+                    dataKey="minutes"
+                    fill={chartTheme.secondary}
+                    radius={[0, 8, 8, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </ChartFrame>
           )}
         </AnalyticsPanel>
 
@@ -214,20 +269,20 @@ export function AnalyticsPage() {
               message="Completion rate will be computed from stored open and completed tasks."
             />
           ) : (
-            <div className="flex flex-col items-center justify-center gap-4 py-8">
-              <div className="text-6xl font-bold tabular-nums text-primary">
+            <div className="flex min-h-64 flex-col items-center justify-center gap-5 rounded-card border border-white/10 bg-surface-raised/70 px-5 py-8 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+              <div className="font-metric text-6xl font-semibold tabular-nums text-primary">
                 {metrics.completionRate}%
               </div>
               <div className="flex gap-6 text-sm">
                 <div className="flex flex-col items-center">
-                  <span className="font-semibold text-success">
+                  <span className="font-metric text-2xl font-semibold text-success tabular-nums">
                     {metrics.completedActions}
                   </span>
                   <span className="text-muted">Completed</span>
                 </div>
-                <div className="h-10 w-[1px] bg-border" />
+                <div className="h-12 w-[1px] bg-white/10" />
                 <div className="flex flex-col items-center">
-                  <span className="font-semibold text-accent">
+                  <span className="font-metric text-2xl font-semibold text-accent tabular-nums">
                     {metrics.openActions}
                   </span>
                   <span className="text-muted">Open</span>
@@ -249,7 +304,7 @@ export function AnalyticsPage() {
               {metrics.topTopics.map(([topic, count]) => (
                 <span
                   key={topic}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-raised px-3 py-1.5 text-sm font-medium text-primary shadow-soft"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-surface-raised/80 px-3 py-1.5 text-sm font-medium text-primary shadow-soft"
                 >
                   {topic}
                   <span className="text-xs text-muted tabular-nums">({count})</span>

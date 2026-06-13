@@ -42,10 +42,10 @@ export function ArchivePage() {
       <PageHeader
         eyebrow="Archive"
         title="Meeting archive"
-        description="Search and filter persisted meeting records. Transcript and semantic search remain separate future work."
+        description="Search and filter persisted meeting records. Open any meeting to review transcript, summary, actions, analytics and searchable evidence."
       />
 
-      <section className="space-y-4 rounded-card border border-border bg-surface p-5">
+      <section className="space-y-4 rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl">
         <SearchInput
           label="Search archive"
           value={query}
@@ -170,7 +170,7 @@ export function ArchivePage() {
                   type="button"
                   disabled={page <= 1}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  className="rounded-control border border-border px-3 py-2 text-sm font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  className="sf-secondary-button px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Previous
                 </button>
@@ -178,7 +178,7 @@ export function ArchivePage() {
                   type="button"
                   disabled={page >= pagination.totalPages}
                   onClick={() => setPage((current) => current + 1)}
-                  className="rounded-control border border-border px-3 py-2 text-sm font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  className="sf-secondary-button px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Next
                 </button>

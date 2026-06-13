@@ -10,12 +10,12 @@ type MeetingRowProps = {
 
 export function MeetingRow({ meeting }: MeetingRowProps) {
   return (
-    <article className="rounded-card border border-border bg-surface p-4 transition duration-fast hover:border-accent/60">
+    <article className="rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl transition duration-normal hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.09]">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <Link
             to={`/meetings/${meeting.id}`}
-            className="text-base font-semibold text-primary hover:text-accent"
+            className="font-display text-xl font-semibold text-primary hover:text-accent"
           >
             {meeting.title}
           </Link>
@@ -39,7 +39,7 @@ export function MeetingRow({ meeting }: MeetingRowProps) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium uppercase text-muted">
+          <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 font-ui text-xs font-semibold uppercase text-muted">
             {meeting.sourceType}
           </span>
           <StatusBadge status={meeting.status} />

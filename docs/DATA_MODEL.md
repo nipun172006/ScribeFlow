@@ -2,7 +2,7 @@
 
 Transport-layer dates are ISO 8601 strings in the API. Database dates use `timestamptz`. Database rows use `snake_case`; API responses map them to shared camelCase domain objects.
 
-Phase 3 includes SQL migrations for all planned persistence tables plus uploaded-audio transcription persistence. Deepgram now writes `meeting_speakers` and `transcript_segments`; summaries, topics, chunks and action items are still inserted only in later phases.
+The current schema supports uploaded and browser-recorded meetings, Deepgram transcription and diarisation, Gemini summaries and action items, topic persistence and semantic-search chunks. Database rows remain `snake_case`; API responses expose camelCase domain objects.
 
 ## Shared Rules
 

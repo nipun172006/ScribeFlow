@@ -33,7 +33,7 @@ export function GlobalSearchPage() {
         description="Natural-language search retrieves transcript chunks, summaries and timestamped sources."
       />
 
-      <section className="rounded-card border border-border bg-surface p-5">
+      <section className="rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl">
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="flex-1">
             <SearchInput
@@ -92,7 +92,7 @@ export function GlobalSearchPage() {
               return (
                 <div
                   key={`${result.meetingId}-${index}`}
-                  className="flex flex-col gap-3 rounded-card border border-border bg-surface p-5 transition-colors hover:border-border-hover"
+                  className="flex flex-col gap-3 rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl transition duration-normal hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.09]"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
@@ -103,7 +103,7 @@ export function GlobalSearchPage() {
                         {result.meetingTitle}
                       </Link>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center rounded-control border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                        <span className="inline-flex items-center rounded-control border border-accent/25 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
                           {result.chunkKind.replace(/_/g, " ")}
                         </span>
                         {result.similarityScore !== null && (
@@ -125,7 +125,7 @@ export function GlobalSearchPage() {
                     </div>
                     <Link
                       to={targetUrl}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-control px-3 py-1.5 text-sm font-medium text-muted transition hover:bg-surface-raised hover:text-primary focus-visible:outline-accent"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-control border border-white/10 bg-white/[0.045] px-3 py-1.5 text-sm font-medium text-muted transition hover:border-white/20 hover:bg-white/[0.08] hover:text-primary focus-visible:outline-accent"
                       aria-label={`Open meeting ${result.meetingTitle}`}
                     >
                       Open <ArrowRight size={16} aria-hidden="true" />

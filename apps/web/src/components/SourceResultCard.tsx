@@ -8,7 +8,7 @@ type SourceResultCardProps = {
 
 export function SourceResultCard({ result }: SourceResultCardProps) {
   return (
-    <article className="rounded-card border border-border bg-surface p-5">
+    <article className="rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-base font-semibold text-primary">
@@ -25,7 +25,7 @@ export function SourceResultCard({ result }: SourceResultCardProps) {
             </span>
           </div>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-raised px-2.5 py-1 text-xs text-muted">
+        <span className="inline-flex items-center gap-1.5 rounded-control border border-accent/25 bg-accent/10 px-2.5 py-1 text-xs text-accent">
           <Gauge size={14} aria-hidden="true" />
           {Math.round(result.score * 100)} relevance
         </span>

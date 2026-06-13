@@ -6,6 +6,8 @@ import {
   FileAudio,
   HardDriveUpload,
   Mic2,
+  RefreshCcw,
+  Trash2,
   X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -211,7 +213,7 @@ export function NewMeetingPage() {
   };
 
   const [recordingStatus, setRecordingStatus] = useState<
-    "idle" | "recording" | "error" | "recorded"
+    "idle" | "starting" | "recording" | "error" | "recorded"
   >("idle");
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
@@ -219,7 +221,10 @@ export function NewMeetingPage() {
   const [recordingError, setRecordingError] = useState<string | null>(null);
 
   const chunksRef = useRef<BlobPart[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const timerRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
 
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60)
@@ -229,27 +234,72 @@ export function NewMeetingPage() {
     return `${m}:${s}`;
   };
 
+  const clearRecordingTimer = () => {
+    if (timerRef.current !== null) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    recordingStartedAtRef.current = null;
+  };
+
+  const beginRecordingTimer = () => {
+    if (timerRef.current !== null) {
+      return;
+    }
+
+    recordingStartedAtRef.current = Date.now();
+    setRecordingDuration(0);
+    setRecordingStatus("recording");
+    timerRef.current = window.setInterval(() => {
+      const startedAt = recordingStartedAtRef.current;
+      if (startedAt === null) {
+        return;
+      }
+
+      setRecordingDuration(Math.floor((Date.now() - startedAt) / 1000));
+    }, 250);
+  };
+
   useEffect(() => {
+    audioUrlRef.current = audioUrl;
     return () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
-      if (timerRef.current !== null) window.clearInterval(timerRef.current);
-      if (mediaRecorder && mediaRecorder.state !== "inactive") {
-        mediaRecorder.stream.getTracks().forEach((t) => t.stop());
-        mediaRecorder.stop();
+    };
+  }, [audioUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      recordingStartedAtRef.current = null;
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+      }
+
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stream.getTracks().forEach((track) => track.stop());
+        recorder.stop();
       }
     };
-  }, [audioUrl, mediaRecorder]);
+  }, []);
 
   const startRecording = async () => {
+    let stream: MediaStream | null = null;
+
     try {
       setRecordingError(null);
       setFile(null);
+      setRecordingDuration(0);
+      clearRecordingTimer();
+      setRecordingStatus("starting");
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       setAudioUrl(null);
 
-      console.log("Calling getUserMedia");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log("Got stream");
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recordingStream = stream;
       const preferredTypes = [
         "audio/webm;codecs=opus",
         "audio/webm",
@@ -267,10 +317,13 @@ export function NewMeetingPage() {
         }
       }
 
-      console.log("Creating MediaRecorder with mimeType:", mimeType);
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const recorder = new MediaRecorder(
+        recordingStream,
+        mimeType ? { mimeType } : undefined,
+      );
       chunksRef.current = [];
 
+      recorder.onstart = beginRecordingTimer;
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunksRef.current.push(event.data);
@@ -278,12 +331,24 @@ export function NewMeetingPage() {
       };
 
       recorder.onstop = () => {
+        clearRecordingTimer();
         const recorderType = recorder.mimeType || "audio/webm";
         const uploadMimeType = recorderType.startsWith("audio/webm")
           ? "audio/webm"
           : recorderType;
 
         const blob = new Blob(chunksRef.current, { type: uploadMimeType });
+        if (blob.size === 0) {
+          setRecordingStatus("error");
+          setRecordingError(
+            "No microphone audio was captured. Please check your input device and record again.",
+          );
+          recordingStream.getTracks().forEach((track) => track.stop());
+          mediaRecorderRef.current = null;
+          setMediaRecorder(null);
+          return;
+        }
+
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
         setRecordingStatus("recorded");
@@ -295,21 +360,29 @@ export function NewMeetingPage() {
         });
         setFile(liveFile);
 
-        stream.getTracks().forEach((track) => track.stop());
-        if (timerRef.current !== null) window.clearInterval(timerRef.current);
+        recordingStream.getTracks().forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
+        setMediaRecorder(null);
       };
 
-      console.log("Starting recorder...");
-      recorder.start();
-      console.log("Setting state to recording...");
-      setMediaRecorder(recorder);
-      setRecordingStatus("recording");
-      setRecordingDuration(0);
+      recorder.onerror = () => {
+        clearRecordingTimer();
+        setRecordingStatus("error");
+        setRecordingError("Recording failed. Please check microphone permissions.");
+        recordingStream.getTracks().forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
+        setMediaRecorder(null);
+      };
 
-      timerRef.current = window.setInterval(() => {
-        setRecordingDuration((prev) => prev + 1);
-      }, 1000);
+      mediaRecorderRef.current = recorder;
+      setMediaRecorder(recorder);
+      recorder.start();
+      beginRecordingTimer();
     } catch (err) {
+      clearRecordingTimer();
+      stream?.getTracks().forEach((track) => track.stop());
+      mediaRecorderRef.current = null;
+      setMediaRecorder(null);
       setRecordingStatus("error");
       setRecordingError(
         err instanceof Error ? err.message : "Failed to access microphone.",
@@ -318,8 +391,29 @@ export function NewMeetingPage() {
   };
 
   const stopRecording = () => {
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      mediaRecorder.stop();
+    const recorder = mediaRecorderRef.current ?? mediaRecorder;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  };
+
+  const discardRecording = () => {
+    clearRecordingTimer();
+    chunksRef.current = [];
+    mediaRecorderRef.current = null;
+    setMediaRecorder(null);
+    setFile(null);
+    setRecordingDuration(0);
+    setRecordingError(null);
+    setRecordingStatus("idle");
+    setUploadedBytes(0);
+    setPhase("idle");
+    setUploadError(null);
+
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      audioUrlRef.current = null;
+      setAudioUrl(null);
     }
   };
 
@@ -333,7 +427,7 @@ export function NewMeetingPage() {
       <PageHeader
         eyebrow="Capture"
         title="Create a meeting"
-        description="Create persisted meeting metadata, upload private audio directly to Supabase Storage, and keep AI processing clearly marked as a later phase."
+        description="Upload a recording or capture audio live from your browser. ScribeFlow stores audio privately, then runs transcription, diarisation, analysis and search indexing."
       />
 
       <Tabs.Root
@@ -346,19 +440,19 @@ export function NewMeetingPage() {
         }}
       >
         <Tabs.List
-          className="inline-flex rounded-card border border-border bg-surface p-1"
+          className="inline-flex rounded-card border border-white/10 bg-white/[0.06] p-1 shadow-soft backdrop-blur-xl"
           aria-label="Meeting creation modes"
         >
           <Tabs.Trigger
             value="upload"
-            className="inline-flex items-center gap-2 rounded-control px-4 py-2 text-sm font-medium text-muted transition duration-fast data-[state=active]:bg-surface-raised data-[state=active]:text-primary"
+            className="inline-flex items-center gap-2 rounded-control px-4 py-2 text-sm font-medium text-muted transition duration-fast data-[state=active]:bg-white/[0.09] data-[state=active]:text-primary"
           >
             <HardDriveUpload size={16} aria-hidden="true" />
             Upload Recording
           </Tabs.Trigger>
           <Tabs.Trigger
             value="live"
-            className="inline-flex items-center gap-2 rounded-control px-4 py-2 text-sm font-medium text-muted transition duration-fast data-[state=active]:bg-surface-raised data-[state=active]:text-primary"
+            className="inline-flex items-center gap-2 rounded-control px-4 py-2 text-sm font-medium text-muted transition duration-fast data-[state=active]:bg-white/[0.09] data-[state=active]:text-primary"
           >
             <Mic2 size={16} aria-hidden="true" />
             Record Live
@@ -373,7 +467,7 @@ export function NewMeetingPage() {
               void runUpload();
             }}
           >
-            <section className="space-y-5 rounded-card border border-border bg-surface p-5">
+            <section className="sf-glass-card space-y-5 p-5 md:p-6">
               <MeetingMetadataFields
                 title={title}
                 setTitle={setTitle}
@@ -388,13 +482,13 @@ export function NewMeetingPage() {
               />
             </section>
 
-            <section className="space-y-5 rounded-card border border-border bg-surface p-5">
+            <section className="sf-glass-card space-y-5 p-5 md:p-6">
               <div
                 className={cx(
                   "flex min-h-64 flex-col items-center justify-center rounded-card border border-dashed px-5 py-8 text-center transition duration-fast",
                   dragActive
                     ? "border-accent bg-accent/10"
-                    : "border-border bg-background/50",
+                    : "border-white/10 bg-surface-raised/55",
                 )}
                 onDragEnter={(event) => {
                   event.preventDefault();
@@ -414,7 +508,7 @@ export function NewMeetingPage() {
                   Drag a recording here or choose one from your device. Supported
                   formats include MP3, WAV, M4A, MP4, Ogg and WebM.
                 </p>
-                <label className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-control border border-border bg-surface-raised px-4 py-2.5 text-sm font-semibold text-primary hover:border-accent/70">
+                <label className="sf-secondary-button mt-5 cursor-pointer">
                   <HardDriveUpload size={17} aria-hidden="true" />
                   Choose file
                   <input
@@ -461,7 +555,7 @@ export function NewMeetingPage() {
                 <button
                   type="submit"
                   disabled={!isUploadValid || isUploading}
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-control bg-accent px-4 py-3 text-sm font-semibold text-accent-contrast transition duration-fast hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="sf-primary-button flex-1"
                 >
                   <HardDriveUpload size={18} aria-hidden="true" />
                   {phase === "creating"
@@ -475,7 +569,7 @@ export function NewMeetingPage() {
                 {isUploading ? (
                   <button
                     type="button"
-                    className="inline-flex items-center justify-center gap-2 rounded-control border border-border px-4 py-3 text-sm font-semibold text-primary hover:border-error/60"
+                    className="sf-secondary-button hover:border-error/60"
                     onClick={() => {
                       uploadRef.current?.abort(true);
                       setPhase("failed");
@@ -505,7 +599,7 @@ export function NewMeetingPage() {
               void runUpload();
             }}
           >
-            <section className="space-y-5 rounded-card border border-border bg-surface p-5">
+            <section className="sf-glass-card space-y-5 p-5 md:p-6">
               <MeetingMetadataFields
                 title={title}
                 setTitle={setTitle}
@@ -520,15 +614,22 @@ export function NewMeetingPage() {
               />
             </section>
 
-            <section className="space-y-5 rounded-card border border-border bg-surface p-5">
-              <div className="flex min-h-64 flex-col items-center justify-center rounded-card border border-border bg-background/50 px-5 py-8 text-center transition duration-fast">
-                <Mic2 className="text-accent" size={36} aria-hidden="true" />
-                <h2 className="mt-4 text-lg font-semibold">Record live meeting</h2>
+            <section className="sf-glass-card space-y-5 p-5 md:p-6">
+              <div className="relative flex min-h-80 flex-col items-center justify-center overflow-hidden rounded-panel border border-white/10 bg-surface-raised/55 px-5 py-8 text-center transition duration-fast">
+                <div
+                  className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,rgba(129,140,248,0.16),transparent_32rem)]"
+                  aria-hidden="true"
+                />
+                <div className="relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.055] text-accent shadow-[0_0_32px_rgba(129,140,248,0.18)]">
+                  <Mic2 size={28} aria-hidden="true" />
+                </div>
+                <h2 className="relative z-10 mt-4 font-display text-2xl font-semibold">
+                  Record live meeting
+                </h2>
                 <p className="mt-2 max-w-md text-sm leading-6 text-muted">
-                  Record a live meeting from your microphone. When you stop, ScribeFlow
-                  uploads the recording and runs the same transcription, diarisation,
-                  summary and search pipeline. Clear audio improves diarisation
-                  accuracy.
+                  Record a live meeting from your microphone. Processing starts after
+                  recording stops and you choose Use recording. If the take is messy,
+                  discard it and record again before anything is saved.
                 </p>
 
                 {typeof MediaRecorder === "undefined" ||
@@ -542,33 +643,73 @@ export function NewMeetingPage() {
                       browser.
                     </p>
                   </div>
-                ) : recordingStatus === "idle" ||
-                  recordingStatus === "recorded" ||
-                  recordingStatus === "error" ? (
+                ) : recordingStatus === "idle" || recordingStatus === "error" ? (
                   <button
                     type="button"
                     onClick={startRecording}
                     disabled={isUploading}
-                    className="mt-6 inline-flex cursor-pointer items-center gap-2 rounded-control border border-border bg-surface-raised px-4 py-2.5 text-sm font-semibold text-primary hover:border-accent/70 disabled:opacity-50"
+                    className="sf-primary-button mt-6"
                   >
                     <Mic2 size={17} aria-hidden="true" />
                     Start recording
                   </button>
+                ) : recordingStatus === "recorded" ? (
+                  <div
+                    className="relative z-10 mt-6 flex flex-wrap justify-center gap-3"
+                    aria-label="Recorded audio actions"
+                  >
+                    <button
+                      type="button"
+                      onClick={startRecording}
+                      disabled={isUploading}
+                      className="sf-secondary-button"
+                    >
+                      <RefreshCcw size={17} aria-hidden="true" />
+                      Record again
+                    </button>
+                    <button
+                      type="button"
+                      onClick={discardRecording}
+                      disabled={isUploading}
+                      className="inline-flex items-center justify-center gap-2 rounded-control border border-danger/50 bg-danger/10 px-5 py-3 font-ui text-sm font-semibold text-danger transition duration-fast hover:border-danger hover:bg-danger/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Trash2 size={17} aria-hidden="true" />
+                      Discard recording
+                    </button>
+                  </div>
+                ) : recordingStatus === "starting" ? (
+                  <div
+                    className="relative z-10 mt-6 flex flex-col items-center gap-3"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span className="font-metric text-4xl font-bold text-primary tabular-nums">
+                      {formatDuration(recordingDuration)}
+                    </span>
+                    <p className="text-sm text-muted">
+                      Requesting microphone access...
+                    </p>
+                  </div>
                 ) : (
-                  <div className="mt-6 flex flex-col items-center gap-4">
-                    <div className="flex items-center gap-3">
+                  <div
+                    className="relative z-10 mt-6 flex flex-col items-center gap-5"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div className="flex items-center gap-3 rounded-full border border-danger/30 bg-danger/10 px-3 py-1 font-ui text-xs font-bold uppercase tracking-[0.16em] text-danger">
                       <span className="relative flex h-3 w-3">
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-error opacity-75"></span>
                         <span className="relative inline-flex h-3 w-3 rounded-full bg-error"></span>
                       </span>
-                      <span className="font-mono text-lg font-semibold text-primary">
-                        {formatDuration(recordingDuration)}
-                      </span>
+                      Recording now
                     </div>
+                    <span className="font-metric text-6xl font-bold leading-none text-primary tabular-nums">
+                      {formatDuration(recordingDuration)}
+                    </span>
                     <button
                       type="button"
                       onClick={stopRecording}
-                      className="inline-flex items-center gap-2 rounded-control bg-error px-4 py-2 text-sm font-semibold text-error-contrast hover:bg-error/90"
+                      className="inline-flex items-center gap-2 rounded-control bg-error px-5 py-3 font-ui text-sm font-bold text-error-contrast shadow-[0_0_32px_rgba(248,113,113,0.2)] transition duration-fast hover:bg-error/90"
                     >
                       <X size={17} aria-hidden="true" />
                       Stop recording
@@ -583,7 +724,10 @@ export function NewMeetingPage() {
                 ) : null}
 
                 {recordingStatus === "recorded" && audioUrl ? (
-                  <div className="mt-6 flex flex-col items-center gap-3 w-full max-w-sm">
+                  <div className="relative z-10 mt-6 flex w-full max-w-sm flex-col items-center gap-3 rounded-card border border-white/10 bg-white/[0.04] p-4">
+                    <p className="text-sm font-semibold text-primary">
+                      Preview ready. This is still local.
+                    </p>
                     <audio src={audioUrl} controls className="w-full" />
                     {file ? (
                       <p className="text-sm text-primary">
@@ -626,7 +770,7 @@ export function NewMeetingPage() {
                   disabled={
                     !isUploadValid || isUploading || recordingStatus !== "recorded"
                   }
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-control bg-accent px-4 py-3 text-sm font-semibold text-accent-contrast transition duration-fast hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="sf-primary-button flex-1"
                 >
                   <HardDriveUpload size={18} aria-hidden="true" />
                   {phase === "creating"
@@ -640,7 +784,7 @@ export function NewMeetingPage() {
                 {isUploading ? (
                   <button
                     type="button"
-                    className="inline-flex items-center justify-center gap-2 rounded-control border border-border px-4 py-3 text-sm font-semibold text-primary hover:border-error/60"
+                    className="sf-secondary-button hover:border-error/60"
                     onClick={() => {
                       uploadRef.current?.abort(true);
                       setPhase("failed");
@@ -752,7 +896,7 @@ function MeetingMetadataFields(props: {
 
 function ValidationPanel({ messages }: { messages: string[] }) {
   return (
-    <div className="rounded-card border border-warning/40 bg-warning/10 p-4">
+    <div className="rounded-card border border-warning/40 bg-warning/10 p-4 shadow-soft backdrop-blur-xl">
       <div className="flex gap-3">
         <AlertCircle className="mt-0.5 text-warning" size={18} aria-hidden="true" />
         <div>
@@ -787,7 +931,7 @@ function UploadProgressPanel(props: {
             : "Upload failed";
 
   return (
-    <div className="rounded-card border border-border bg-background/60 p-4">
+    <div className="rounded-card border border-white/10 bg-surface-raised/70 p-4 shadow-soft backdrop-blur-xl">
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-primary">{phaseLabel}</p>
@@ -797,7 +941,7 @@ function UploadProgressPanel(props: {
           <CheckCircle2 className="text-success" size={20} aria-hidden="true" />
         ) : null}
       </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-border">
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
         <div
           className="h-full rounded-full bg-accent transition-[width] duration-fast"
           style={{ width: `${Math.min(100, props.percent)}%` }}

@@ -193,7 +193,7 @@ export function ProcessingPage() {
         title={meeting?.title ?? "Meeting processing"}
         description={
           meeting
-            ? "This page reflects persisted meeting status. Uploaded-audio transcription uses Deepgram; Gemini analysis persists summaries, topics and action items. RAG remains a later phase."
+            ? "This page reflects persisted meeting status. Deepgram transcription, Gemini analysis and search indexing run from the stored recording."
             : `Meeting ${meetingId ?? "record"} is waiting for repository lookup.`
         }
         actions={
@@ -214,10 +214,7 @@ export function ProcessingPage() {
                 {meeting?.status === "failed" ? "Retry transcription" : "Start now"}
               </button>
             ) : null}
-            <Link
-              to="/archive"
-              className="inline-flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2 text-sm font-semibold text-primary hover:border-accent/70"
-            >
+            <Link to="/archive" className="sf-secondary-button px-3 py-2">
               <ArrowLeft size={17} aria-hidden="true" />
               Archive
             </Link>

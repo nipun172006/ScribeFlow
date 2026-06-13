@@ -18,7 +18,7 @@ const statusDescriptions: Record<MeetingStatus, string> = {
   transcribing: "Deepgram transcription and diarisation are running.",
   transcribed: "Transcript is ready; Gemini analysis may still need to run.",
   analysing: "Gemini summary, topics and action items are being generated.",
-  indexing: "Future retrieval indexing is running.",
+  indexing: "Retrieval indexing is running.",
   completed: "Transcript and Gemini analysis are ready.",
   failed: "A processing step failed.",
 };

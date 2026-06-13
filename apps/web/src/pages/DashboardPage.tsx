@@ -92,17 +92,8 @@ export function DashboardPage() {
     <div className="space-y-8">
       <PageHeader
         eyebrow="Workspace"
-        title="Meeting intelligence, ready for real processing"
-        description="Start from an uploaded recording or a future live meeting session. Deepgram transcription and Gemini structured analysis are connected for uploaded meetings."
-        actions={
-          <Link
-            to="/meetings/new"
-            className="inline-flex items-center gap-2 rounded-control bg-accent px-4 py-2.5 text-sm font-semibold text-accent-contrast transition duration-fast hover:bg-accent/90"
-          >
-            <Plus size={18} aria-hidden="true" />
-            New Meeting
-          </Link>
-        }
+        title="Meeting intelligence, ready for every recording"
+        description="Upload audio or record live from your browser. ScribeFlow transcribes, separates speakers, extracts decisions and action items, then makes every meeting searchable."
       />
 
       <section
@@ -177,12 +168,9 @@ export function DashboardPage() {
               title="No meetings stored yet"
               message="Supabase-backed meeting records will appear here after you create upload or live metadata."
               action={
-                <Link
-                  to="/meetings/new"
-                  className="inline-flex items-center gap-2 rounded-control border border-border bg-surface-raised px-3 py-2 text-sm font-semibold text-primary hover:border-accent/70"
-                >
+                <Link to="/meetings/new" className="sf-secondary-button px-3 py-2">
                   <Plus size={16} aria-hidden="true" />
-                  Prepare upload
+                  Add recording
                 </Link>
               }
             />
@@ -207,11 +195,11 @@ export function DashboardPage() {
               message="Topics will appear here after meetings have completed Gemini analysis. Cross-meeting aggregation works from recent analysed meetings."
             />
           ) : (
-            <div className="flex flex-wrap gap-2 rounded-card border border-border bg-surface p-5">
+            <div className="flex flex-wrap gap-2 rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl">
               {metrics.topTopics.map(([topic, count]) => (
                 <span
                   key={topic}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-raised px-3 py-1 text-sm font-medium text-primary shadow-soft"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-surface-raised/80 px-3 py-1 text-sm font-medium text-primary shadow-soft"
                 >
                   {topic}
                   <span className="text-xs text-muted tabular-nums">({count})</span>
