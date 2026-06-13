@@ -5,11 +5,22 @@ const statusLabels: Record<MeetingStatus, string> = {
   created: "Created",
   uploading: "Uploading",
   transcribing: "Transcribing",
-  transcribed: "Transcribed",
+  transcribed: "Transcript ready",
   analysing: "Analysing",
   indexing: "Indexing",
   completed: "Completed",
   failed: "Failed",
+};
+
+const statusDescriptions: Record<MeetingStatus, string> = {
+  created: "Recording metadata is ready and processing has not started.",
+  uploading: "The private storage upload has not been verified yet.",
+  transcribing: "Deepgram transcription and diarisation are running.",
+  transcribed: "Transcript is ready; Gemini analysis may still need to run.",
+  analysing: "Gemini summary, topics and action items are being generated.",
+  indexing: "Future retrieval indexing is running.",
+  completed: "Transcript and Gemini analysis are ready.",
+  failed: "A processing step failed.",
 };
 
 type StatusBadgeProps = {
@@ -26,6 +37,8 @@ export function StatusBadge({ status }: StatusBadgeProps) {
 
   return (
     <span
+      title={statusDescriptions[status]}
+      aria-label={`${statusLabels[status]}: ${statusDescriptions[status]}`}
       className={cx(
         "inline-flex items-center rounded-control border px-2.5 py-1 text-xs font-semibold",
         tone,

@@ -1,5 +1,6 @@
 import type {
   ActionItem,
+  AnalyzeMeetingResponse,
   ApiErrorResponse,
   MeetingDetail,
   MeetingListQuery,
@@ -123,6 +124,12 @@ export function getMeetingDetail(meetingId: string) {
 
 export function transcribeMeeting(meetingId: string) {
   return jsonRequest<TranscribeMeetingResponse>(`/meetings/${meetingId}/transcribe`, {
+    method: "POST",
+  });
+}
+
+export function analyzeMeeting(meetingId: string) {
+  return jsonRequest<AnalyzeMeetingResponse>(`/meetings/${meetingId}/analyze`, {
     method: "POST",
   });
 }

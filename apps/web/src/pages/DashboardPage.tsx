@@ -36,7 +36,7 @@ export function DashboardPage() {
       <PageHeader
         eyebrow="Workspace"
         title="Meeting intelligence, ready for real processing"
-        description="Start from an uploaded recording or a future live meeting session. Deepgram transcription is connected; generated summaries and action extraction remain future Gemini work."
+        description="Start from an uploaded recording or a future live meeting session. Deepgram transcription and Gemini structured analysis are connected for uploaded meetings."
         actions={
           <Link
             to="/meetings/new"
@@ -134,7 +134,7 @@ export function DashboardPage() {
           <EmptyState
             icon={<Tags size={20} aria-hidden="true" />}
             title="No topics detected"
-            message="Topics will be stored after transcript analysis and RAG indexing are implemented."
+            message="Topics will appear here after meetings have completed Gemini analysis. Cross-meeting aggregation remains a later phase."
           />
         </section>
       </div>

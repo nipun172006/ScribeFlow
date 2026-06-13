@@ -9,8 +9,10 @@ import {
   FileText,
   ListChecks,
   MessageSquareText,
+  Play,
   Save,
   Search,
+  Tags,
   UsersRound,
 } from "lucide-react";
 import type { ActionItem, MeetingDetail, MeetingSpeaker } from "@scribeflow/shared";
@@ -24,6 +26,8 @@ import { SpeakerBadge } from "../components/SpeakerBadge";
 import { StatusBadge } from "../components/StatusBadge";
 import { TranscriptSegmentRow } from "../components/TranscriptSegmentRow";
 import {
+  analyzeMeeting,
+  ApiClientError,
   getMeetingDetail,
   renameSpeaker,
   updateActionItemStatus,
@@ -51,6 +55,8 @@ export function MeetingDetailPage() {
   const queryClient = useQueryClient();
   const [transcriptQuery, setTranscriptQuery] = useState("");
   const [speakerFilter, setSpeakerFilter] = useState("");
+  const [activeTab, setActiveTab] = useState("overview");
+  const [highlightedSegmentId, setHighlightedSegmentId] = useState<string | null>(null);
   const meetingQuery = useQuery({
     queryKey: ["meeting-detail", meetingId],
     queryFn: () => getMeetingDetail(meetingId ?? ""),
@@ -65,12 +71,26 @@ export function MeetingDetailPage() {
   });
 
   const actionMutation = useMutation({
-    mutationFn: (item: ActionItem) =>
+    mutationFn: ({
+      item,
+      status,
+    }: {
+      item: ActionItem;
+      status: ActionItem["status"];
+    }) =>
       updateActionItemStatus(item.id, {
-        status: item.status === "completed" ? "open" : "completed",
+        status,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["meeting-detail", meetingId] });
+    },
+  });
+
+  const analysisMutation = useMutation({
+    mutationFn: () => analyzeMeeting(meetingId ?? ""),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["meeting-detail", meetingId] });
+      void queryClient.invalidateQueries({ queryKey: ["meetings"] });
     },
   });
 
@@ -133,6 +153,32 @@ export function MeetingDetailPage() {
   );
   const canRenderResponsiveChart =
     typeof window !== "undefined" && "ResizeObserver" in window;
+  const topics = useMemo(() => {
+    const persistedTopics = detail?.topics.map((topic) => topic.displayLabel) ?? [];
+    return persistedTopics.length > 0
+      ? persistedTopics
+      : (detail?.summary?.topics ?? []);
+  }, [detail?.summary?.topics, detail?.topics]);
+  const canRunAnalysis =
+    meeting?.status === "transcribed" &&
+    (detail?.transcriptSegments.length ?? 0) > 0 &&
+    !detail?.summary;
+  const handleEvidenceJump = useCallback((segmentId: string) => {
+    setTranscriptQuery("");
+    setSpeakerFilter("");
+    setActiveTab("transcript");
+    setHighlightedSegmentId(segmentId);
+
+    window.setTimeout(() => {
+      document
+        .querySelector(`[data-transcript-segment-id="${segmentId}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+
+    window.setTimeout(() => {
+      setHighlightedSegmentId((current) => (current === segmentId ? null : current));
+    }, 4500);
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -198,7 +244,11 @@ export function MeetingDetailPage() {
             />
           </section>
 
-          <Tabs.Root defaultValue="overview" className="space-y-6">
+          <Tabs.Root
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="space-y-6"
+          >
             <Tabs.List
               className="flex flex-wrap gap-2 rounded-card border border-border bg-surface p-1"
               aria-label="Meeting detail sections"
@@ -220,18 +270,56 @@ export function MeetingDetailPage() {
 
             <Tabs.Content value="overview" className="space-y-4">
               {detail.summary ? (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {summarySections.map((section) => (
-                    <SummarySection key={section} section={section} detail={detail} />
-                  ))}
-                </div>
+                <>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {summarySections.map((section) => (
+                      <SummarySection key={section} section={section} detail={detail} />
+                    ))}
+                  </div>
+                  <TopicSection topics={topics} />
+                </>
               ) : (
                 <EmptyState
                   icon={<FileText size={20} aria-hidden="true" />}
-                  title="Summary unavailable"
-                  message="No AI-generated summary row exists yet. This will be created after the structured analysis phase succeeds."
+                  title="Analysis has not been generated yet"
+                  message={
+                    canRunAnalysis
+                      ? "A speaker-labelled transcript exists. You can run Gemini structured analysis now to persist the summary, topics and action items."
+                      : "Gemini analysis runs after uploaded-audio transcription creates persisted transcript segments."
+                  }
+                  action={
+                    canRunAnalysis ? (
+                      <button
+                        type="button"
+                        disabled={analysisMutation.isPending}
+                        onClick={() => analysisMutation.mutate()}
+                        className="inline-flex items-center gap-2 rounded-control bg-accent px-3 py-2 text-sm font-semibold text-accent-contrast transition duration-fast hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Play size={17} aria-hidden="true" />
+                        {analysisMutation.isPending
+                          ? "Running analysis"
+                          : "Run analysis"}
+                      </button>
+                    ) : null
+                  }
                 />
               )}
+
+              {analysisMutation.error instanceof Error ? (
+                <ErrorState
+                  title="Analysis was not generated"
+                  message={analysisMutation.error.message}
+                  requestId={
+                    analysisMutation.error instanceof ApiClientError
+                      ? analysisMutation.error.requestId
+                      : null
+                  }
+                />
+              ) : null}
+
+              {meeting.status === "analysing" ? (
+                <LoadingState label="Gemini analysis is running" />
+              ) : null}
 
               {detail.speakers.length > 0 ? (
                 <section className="space-y-3 rounded-card border border-border bg-surface p-5">
@@ -297,6 +385,7 @@ export function MeetingDetailPage() {
                           key={segment.id}
                           segment={segment}
                           speakerName={speaker?.displayName ?? "Unknown speaker"}
+                          highlighted={highlightedSegmentId === segment.id}
                         />
                       );
                     })
@@ -331,7 +420,10 @@ export function MeetingDetailPage() {
                       key={item.id}
                       item={item}
                       disabled={actionMutation.isPending}
-                      onStatusChange={() => actionMutation.mutate(item)}
+                      onStatusChange={(status) =>
+                        actionMutation.mutate({ item, status })
+                      }
+                      onEvidenceClick={handleEvidenceJump}
                     />
                   ))}
                 </>
@@ -339,7 +431,7 @@ export function MeetingDetailPage() {
                 <EmptyState
                   icon={<ListChecks size={20} aria-hidden="true" />}
                   title="No action items"
-                  message="Action items will be extracted from transcript evidence after Gemini structured analysis is connected."
+                  message="Action items will appear here after Gemini structured analysis has persisted real transcript-backed tasks."
                 />
               )}
             </Tabs.Content>
@@ -523,6 +615,31 @@ function SummarySection({
       {!overview && (!values || values.length === 0) ? (
         <p className="mt-3 text-sm leading-6 text-muted">No content stored yet.</p>
       ) : null}
+    </section>
+  );
+}
+
+function TopicSection({ topics }: { topics: string[] }) {
+  return (
+    <section className="rounded-card border border-border bg-surface p-5">
+      <div className="flex items-center gap-2">
+        <Tags size={17} aria-hidden="true" className="text-accent" />
+        <h2 className="text-base font-semibold text-primary">Topics</h2>
+      </div>
+      {topics.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {topics.map((topic) => (
+            <span
+              key={topic}
+              className="rounded-control border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-primary"
+            >
+              {topic}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm leading-6 text-muted">No topics stored yet.</p>
+      )}
     </section>
   );
 }

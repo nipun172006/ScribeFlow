@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Play, RefreshCw, Workflow } from "lucide-react";
 import type { MeetingDetail, MeetingStatus } from "@scribeflow/shared";
@@ -9,7 +9,12 @@ import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
 import { ProcessingStep } from "../components/ProcessingStep";
 import { StatusBadge } from "../components/StatusBadge";
-import { ApiClientError, getMeetingDetail, transcribeMeeting } from "../lib/apiClient";
+import {
+  analyzeMeeting,
+  ApiClientError,
+  getMeetingDetail,
+  transcribeMeeting,
+} from "../lib/apiClient";
 
 const processingSteps = [
   {
@@ -62,6 +67,7 @@ const statusOrder: Record<MeetingStatus, number> = {
 };
 
 const autoStartedMeetingIds = new Set<string>();
+const autoStartedAnalysisIds = new Set<string>();
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -81,6 +87,7 @@ const formatDuration = (seconds: number | null) => {
 
 export function ProcessingPage() {
   const { meetingId } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const meetingQuery = useQuery({
     queryKey: ["meeting-detail", meetingId],
@@ -88,12 +95,30 @@ export function ProcessingPage() {
     enabled: Boolean(meetingId),
     refetchInterval: (query) => {
       const detail = query.state.data as MeetingDetail | undefined;
-      return detail?.meeting.status === "transcribing" ? 2000 : false;
+      return detail?.meeting.status === "transcribing" ||
+        detail?.meeting.status === "analysing"
+        ? 2000
+        : false;
     },
   });
   const transcribeMutation = useMutation({
     mutationFn: () => transcribeMeeting(meetingId ?? ""),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["meeting-detail", meetingId] });
+    },
+  });
+  const analyzeMutation = useMutation({
+    mutationFn: () => analyzeMeeting(meetingId ?? ""),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["meeting-detail", meetingId],
+      });
+      await queryClient.invalidateQueries({ queryKey: ["meetings"] });
+      if (meetingId) {
+        navigate(`/meetings/${meetingId}`);
+      }
+    },
+    onError: () => {
       void queryClient.invalidateQueries({ queryKey: ["meeting-detail", meetingId] });
     },
   });
@@ -121,15 +146,19 @@ export function ProcessingPage() {
         processingTimeMs != null
           ? `Provider processing took ${Math.round(processingTimeMs / 1000)}s.`
           : null,
-        "Gemini summary and action extraction remain the next implementation phase.",
+        "Gemini summary and action extraction will start automatically from this processing page.",
       ]
         .filter(Boolean)
         .join(" ")
-    : "Speaker-labelled transcript segments are persisted. Gemini summary and action extraction remain the next implementation phase.";
+    : "Speaker-labelled transcript segments are persisted. Gemini summary and action extraction will start automatically from this processing page.";
   const activeIndex = meeting ? statusOrder[meeting.status] : -1;
   const canStartTranscription =
     meeting?.sourceType === "upload" &&
     (meeting.status === "created" || meeting.status === "failed");
+  const canStartAnalysis =
+    meeting?.status === "transcribed" &&
+    (meetingQuery.data?.transcriptSegments.length ?? 0) > 0 &&
+    !meetingQuery.data?.summary;
 
   useEffect(() => {
     if (!meetingId || !canStartTranscription || meeting?.status !== "created") {
@@ -144,6 +173,19 @@ export function ProcessingPage() {
     transcribeMutation.mutate();
   }, [canStartTranscription, meeting?.status, meetingId, transcribeMutation]);
 
+  useEffect(() => {
+    if (!meetingId || !canStartAnalysis) {
+      return;
+    }
+
+    if (autoStartedAnalysisIds.has(meetingId)) {
+      return;
+    }
+
+    autoStartedAnalysisIds.add(meetingId);
+    analyzeMutation.mutate();
+  }, [analyzeMutation, canStartAnalysis, meetingId]);
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -151,7 +193,7 @@ export function ProcessingPage() {
         title={meeting?.title ?? "Meeting processing"}
         description={
           meeting
-            ? "This page reflects persisted meeting status. Uploaded-audio transcription uses Deepgram; Gemini analysis and RAG remain later phases."
+            ? "This page reflects persisted meeting status. Uploaded-audio transcription uses Deepgram; Gemini analysis persists summaries, topics and action items. RAG remains a later phase."
             : `Meeting ${meetingId ?? "record"} is waiting for repository lookup.`
         }
         actions={
@@ -189,6 +231,10 @@ export function ProcessingPage() {
         <LoadingState label="Starting Deepgram transcription" />
       ) : null}
 
+      {analyzeMutation.isPending ? (
+        <LoadingState label="Running Gemini meeting analysis" />
+      ) : null}
+
       {transcribeMutation.error instanceof Error ? (
         <ErrorState
           title="Transcription could not start"
@@ -196,6 +242,18 @@ export function ProcessingPage() {
           requestId={
             transcribeMutation.error instanceof ApiClientError
               ? transcribeMutation.error.requestId
+              : null
+          }
+        />
+      ) : null}
+
+      {analyzeMutation.error instanceof Error ? (
+        <ErrorState
+          title="Analysis could not start"
+          message={analyzeMutation.error.message}
+          requestId={
+            analyzeMutation.error instanceof ApiClientError
+              ? analyzeMutation.error.requestId
               : null
           }
         />
@@ -258,11 +316,44 @@ export function ProcessingPage() {
             title="Transcript is ready"
             message={transcribedMessage}
             action={
+              <div className="flex flex-wrap justify-center gap-3">
+                {canStartAnalysis ? (
+                  <button
+                    type="button"
+                    disabled={analyzeMutation.isPending}
+                    onClick={() => analyzeMutation.mutate()}
+                    className="inline-flex items-center gap-2 rounded-control bg-accent px-3 py-2 text-sm font-semibold text-accent-contrast transition duration-fast hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Play size={17} aria-hidden="true" />
+                    Start analysis
+                  </button>
+                ) : null}
+                <Link
+                  to={`/meetings/${meeting.id}`}
+                  className="inline-flex items-center gap-2 rounded-control border border-border bg-surface-raised px-3 py-2 text-sm font-semibold text-primary hover:border-accent/70"
+                >
+                  Open transcript
+                </Link>
+              </div>
+            }
+          />
+        ) : null}
+
+        {meeting?.status === "analysing" ? (
+          <LoadingState label="Gemini is extracting the summary, topics and action items" />
+        ) : null}
+
+        {meeting?.status === "completed" ? (
+          <EmptyState
+            icon={<CheckCircle2 size={20} aria-hidden="true" />}
+            title="Meeting analysis is complete"
+            message="The transcript, summary, topics and action items are available on the meeting detail page."
+            action={
               <Link
                 to={`/meetings/${meeting.id}`}
-                className="inline-flex items-center gap-2 rounded-control border border-border bg-surface-raised px-3 py-2 text-sm font-semibold text-primary hover:border-accent/70"
+                className="inline-flex items-center gap-2 rounded-control bg-accent px-3 py-2 text-sm font-semibold text-accent-contrast transition duration-fast hover:bg-accent/90"
               >
-                Open transcript
+                Open meeting
               </Link>
             }
           />

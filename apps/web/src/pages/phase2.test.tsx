@@ -17,6 +17,7 @@ const apiClient = vi.hoisted(() => ({
   listMeetings: vi.fn(),
   getMeetingDetail: vi.fn(),
   transcribeMeeting: vi.fn(),
+  analyzeMeeting: vi.fn(),
   renameSpeaker: vi.fn(),
   updateActionItemStatus: vi.fn(),
 }));
@@ -99,6 +100,75 @@ describe("Phase 2 frontend integration", () => {
       topics: [],
       chunkCount: 0,
     } satisfies MeetingDetail);
+    apiClient.analyzeMeeting.mockResolvedValue({
+      meeting: makeMeeting({ status: "completed" }),
+      summary: {
+        attendees: ["Priya"],
+        executiveOverview: "The team agreed the launch plan is ready.",
+        keyDecisions: ["Launch next Friday"],
+        discussionPoints: ["Marketing assets"],
+        openQuestions: [],
+        nextSteps: ["Publish the announcement"],
+        topics: ["Launch"],
+      },
+      topics: [],
+      actionItems: [],
+      analysis: {
+        attendees: ["Priya"],
+        executiveOverview: "The team agreed the launch plan is ready.",
+        keyDecisions: [
+          {
+            text: "Launch next Friday",
+            evidenceSegmentIds: ["44444444-4444-4444-8444-444444444444"],
+          },
+        ],
+        discussionPoints: [
+          {
+            text: "Marketing assets",
+            evidenceSegmentIds: ["44444444-4444-4444-8444-444444444444"],
+          },
+        ],
+        openQuestions: [],
+        nextSteps: [
+          {
+            text: "Publish the announcement",
+            evidenceSegmentIds: ["44444444-4444-4444-8444-444444444444"],
+          },
+        ],
+        topics: ["Launch"],
+        actionItems: [],
+      },
+      provider: "gemini",
+      modelName: "gemini-test",
+      responseId: "test-response",
+      processingTimeMs: 100,
+      alreadyAnalysed: false,
+    });
+    apiClient.updateActionItemStatus.mockResolvedValue({
+      actionItem: {
+        id: "55555555-5555-4555-8555-555555555555",
+        meetingId,
+        task: "Publish the announcement",
+        ownerName: null,
+        ownerSpeakerId: null,
+        deadline: null,
+        deadlineText: null,
+        status: "completed",
+        confidence: 0.82,
+        sourceSegmentId: "44444444-4444-4444-8444-444444444444",
+        sourceStartMs: 0,
+        sourceEndMs: 3000,
+        evidenceText: "We need posters for the event.",
+        evidenceSegmentIds: ["44444444-4444-4444-8444-444444444444"],
+        completedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
   it("blocks invalid files before upload initialization", async () => {
@@ -195,7 +265,9 @@ describe("Phase 2 frontend integration", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/summary unavailable/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/analysis has not been generated yet/i),
+    ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: /transcript/i }));
     expect(screen.getByText(/transcript unavailable/i)).toBeInTheDocument();
   });
@@ -222,6 +294,70 @@ describe("Phase 2 frontend integration", () => {
     await waitFor(() =>
       expect(apiClient.transcribeMeeting).toHaveBeenCalledWith(meetingId),
     );
+  });
+
+  it("starts Gemini analysis from the processing page after transcription", async () => {
+    const analyzedMeetingId = "66666666-6666-4666-8666-666666666666";
+    apiClient.getMeetingDetail.mockResolvedValue({
+      meeting: makeMeeting({ id: analyzedMeetingId, status: "transcribed" }),
+      speakers: [],
+      transcriptSegments: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          meetingId: analyzedMeetingId,
+          speakerId: null,
+          rawSpeakerIndex: 0,
+          segmentIndex: 0,
+          startMs: 0,
+          endMs: 3000,
+          text: "We need posters for the event.",
+          confidence: 0.95,
+          words: [],
+        },
+      ],
+      summary: null,
+      actionItems: [],
+      topics: [],
+      chunkCount: 0,
+    } satisfies MeetingDetail);
+
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/meetings/${analyzedMeetingId}/processing`]}>
+        <Routes>
+          <Route path="/meetings/:meetingId/processing" element={<ProcessingPage />} />
+          <Route path="/meetings/:meetingId" element={<div>Meeting opened</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(apiClient.analyzeMeeting).toHaveBeenCalledWith(analyzedMeetingId),
+    );
+  });
+
+  it("shows the real analysing state on the processing page", async () => {
+    const analyzingMeetingId = "77777777-7777-4777-8777-777777777777";
+    apiClient.getMeetingDetail.mockResolvedValue({
+      meeting: makeMeeting({ id: analyzingMeetingId, status: "analysing" }),
+      speakers: [],
+      transcriptSegments: [],
+      summary: null,
+      actionItems: [],
+      topics: [],
+      chunkCount: 0,
+    } satisfies MeetingDetail);
+
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/meetings/${analyzingMeetingId}/processing`]}>
+        <Routes>
+          <Route path="/meetings/:meetingId/processing" element={<ProcessingPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(/gemini is extracting the summary/i),
+    ).toBeInTheDocument();
   });
 
   it("renders persisted transcript search and deterministic speaker analytics", async () => {
@@ -287,5 +423,152 @@ describe("Phase 2 frontend integration", () => {
     expect(screen.getByText(/speaking-time distribution/i)).toBeInTheDocument();
     expect(screen.getAllByText("Priya").length).toBeGreaterThan(0);
     expect(screen.getAllByText("60.0%").length).toBeGreaterThan(0);
+  });
+
+  it("renders persisted Gemini summary, topics, action items and evidence jump", async () => {
+    const user = userEvent.setup();
+    const evidenceSegmentId = "44444444-4444-4444-8444-444444444444";
+    apiClient.getMeetingDetail.mockResolvedValue({
+      meeting: makeMeeting({ status: "completed", durationSeconds: 12 }),
+      speakers: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          meetingId,
+          rawSpeakerIndex: 0,
+          displayName: "Priya",
+          totalSpeakingSeconds: 6,
+          speakingPercentage: 60,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      transcriptSegments: [
+        {
+          id: evidenceSegmentId,
+          meetingId,
+          speakerId: "22222222-2222-4222-8222-222222222222",
+          rawSpeakerIndex: 0,
+          segmentIndex: 0,
+          startMs: 0,
+          endMs: 3000,
+          text: "We need posters for the event.",
+          confidence: 0.95,
+          words: [],
+        },
+      ],
+      summary: {
+        attendees: ["Priya", "Arjun"],
+        executiveOverview: "The launch plan is ready.",
+        keyDecisions: ["Launch next Friday"],
+        discussionPoints: ["Marketing assets"],
+        openQuestions: ["Who owns the final review?"],
+        nextSteps: ["Publish the announcement"],
+        topics: ["Launch"],
+      },
+      actionItems: [
+        {
+          id: "55555555-5555-4555-8555-555555555555",
+          meetingId,
+          task: "Publish the announcement",
+          ownerName: null,
+          ownerSpeakerId: null,
+          deadline: null,
+          deadlineText: null,
+          status: "open",
+          confidence: 0.82,
+          sourceSegmentId: evidenceSegmentId,
+          sourceStartMs: 0,
+          sourceEndMs: 3000,
+          evidenceText: "We need posters for the event.",
+          evidenceSegmentIds: [evidenceSegmentId],
+          completedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      topics: [
+        {
+          id: "88888888-8888-4888-8888-888888888888",
+          meetingId,
+          normalizedLabel: "launch",
+          displayLabel: "Launch",
+          confidence: 0.9,
+          mentionCount: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      chunkCount: 0,
+    } satisfies MeetingDetail);
+
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/meetings/${meetingId}`]}>
+        <Routes>
+          <Route path="/meetings/:meetingId" element={<MeetingDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/the launch plan is ready/i)).toBeInTheDocument();
+    expect(screen.getByText("Launch")).toBeInTheDocument();
+    expect(screen.getByText(/launch next friday/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /action items/i }));
+    expect(screen.getByText(/publish the announcement/i)).toBeInTheDocument();
+    expect(screen.getByText(/owner: unassigned/i)).toBeInTheDocument();
+    expect(screen.getByText(/deadline: not mentioned/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /complete action item/i }));
+    await waitFor(() =>
+      expect(apiClient.updateActionItemStatus).toHaveBeenCalledWith(
+        "55555555-5555-4555-8555-555555555555",
+        { status: "completed" },
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: /jump to evidence/i }));
+    expect(screen.getByRole("tab", { name: /transcript/i })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    expect(screen.getByText(/we need posters for the event/i)).toBeInTheDocument();
+    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+  });
+
+  it("shows a run-analysis empty state when a transcript has no analysis", async () => {
+    apiClient.getMeetingDetail.mockResolvedValue({
+      meeting: makeMeeting({ status: "transcribed" }),
+      speakers: [],
+      transcriptSegments: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          meetingId,
+          speakerId: null,
+          rawSpeakerIndex: 0,
+          segmentIndex: 0,
+          startMs: 0,
+          endMs: 3000,
+          text: "We need posters for the event.",
+          confidence: 0.95,
+          words: [],
+        },
+      ],
+      summary: null,
+      actionItems: [],
+      topics: [],
+      chunkCount: 0,
+    } satisfies MeetingDetail);
+
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/meetings/${meetingId}`]}>
+        <Routes>
+          <Route path="/meetings/:meetingId" element={<MeetingDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(/analysis has not been generated yet/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /run analysis/i })).toBeInTheDocument();
   });
 });
