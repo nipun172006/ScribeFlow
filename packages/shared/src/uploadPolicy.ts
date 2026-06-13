@@ -11,9 +11,11 @@ export const audioUploadPolicy = {
     "audio/ogg",
     "audio/wav",
     "audio/webm",
+    "audio/webm;codecs=opus",
     "audio/x-m4a",
     "audio/x-wav",
     "video/mp4",
     "video/webm",
+    "video/webm;codecs=opus",
   ],
 } as const;

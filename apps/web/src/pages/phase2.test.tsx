@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Meeting, MeetingDetail, UploadInstructions } from "@scribeflow/shared";
 import { renderWithProviders } from "../test/renderWithProviders";
 import { ArchivePage } from "./ArchivePage";
@@ -618,5 +618,100 @@ describe("Phase 2 frontend integration", () => {
 
     // Verify it attempted to scroll
     await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+  });
+
+  describe("Live recording mode", () => {
+    let mockGetUserMedia: ReturnType<typeof vi.fn>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let mockMediaRecorder: any;
+
+    beforeEach(() => {
+      mockGetUserMedia = vi.fn().mockResolvedValue({
+        getTracks: () => [{ stop: vi.fn() }],
+      });
+
+      Object.defineProperty(window.navigator, "mediaDevices", {
+        value: { getUserMedia: mockGetUserMedia },
+        configurable: true,
+      });
+      vi.stubGlobal("setInterval", vi.fn().mockReturnValue(123));
+      vi.stubGlobal("clearInterval", vi.fn());
+
+      mockMediaRecorder = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        state: "inactive",
+        stream: { getTracks: () => [{ stop: vi.fn() }] },
+      };
+
+      Object.assign(window, {
+        MediaRecorder: Object.assign(
+          vi.fn().mockImplementation(() => mockMediaRecorder),
+          { isTypeSupported: vi.fn().mockReturnValue(true) },
+        ),
+      });
+      window.URL.createObjectURL = vi.fn().mockReturnValue("blob:test");
+      window.URL.revokeObjectURL = vi.fn();
+    });
+
+    afterEach(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).MediaRecorder;
+      vi.unstubAllGlobals();
+    });
+
+    it("renders live recording tab and allows starting and stopping recording", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <MemoryRouter>
+          <NewMeetingPage />
+        </MemoryRouter>,
+      );
+
+      // Switch to Live tab
+      await user.click(screen.getByRole("tab", { name: /record live/i }));
+
+      expect(
+        screen.getByText(/record a live meeting from your microphone/i),
+      ).toBeInTheDocument();
+
+      // Start recording
+      await user.click(screen.getByRole("button", { name: /start recording/i }));
+      expect(mockGetUserMedia).toHaveBeenCalledWith({ audio: true });
+    });
+
+    it("shows error if getUserMedia fails", async () => {
+      mockGetUserMedia.mockRejectedValue(new Error("Permission denied"));
+      const user = userEvent.setup();
+      renderWithProviders(
+        <MemoryRouter>
+          <NewMeetingPage />
+        </MemoryRouter>,
+      );
+
+      await user.click(screen.getByRole("tab", { name: /record live/i }));
+      await user.click(screen.getByRole("button", { name: /start recording/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/permission denied/i)).toBeInTheDocument();
+      });
+    });
+
+    it("shows unsupported error if MediaRecorder is missing", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).MediaRecorder;
+      const user = userEvent.setup();
+      renderWithProviders(
+        <MemoryRouter>
+          <NewMeetingPage />
+        </MemoryRouter>,
+      );
+
+      await user.click(screen.getByRole("tab", { name: /record live/i }));
+      expect(screen.getByText(/browser not supported/i)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /start recording/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 });

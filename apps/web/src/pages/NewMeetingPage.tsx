@@ -1,26 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import * as Tabs from "@radix-ui/react-tabs";
 import {
   AlertCircle,
   CheckCircle2,
   FileAudio,
   HardDriveUpload,
-  Info,
   Mic2,
-  ShieldCheck,
   X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Upload } from "tus-js-client";
 import { audioUploadPolicy } from "@scribeflow/shared";
-import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { PageHeader } from "../components/PageHeader";
 import {
   ApiClientError,
   completeMeetingUpload,
-  createLiveMeeting,
   failMeetingUpload,
   initializeUploadMeeting,
 } from "../lib/apiClient";
@@ -215,17 +210,112 @@ export function NewMeetingPage() {
     }
   };
 
-  const liveMutation = useMutation({
-    mutationFn: () =>
-      createLiveMeeting({
-        title: title.trim() || "Untitled live meeting",
-        recordedAt: toIsoDate(meetingDate),
-        language: language.trim() || undefined,
-        knownParticipants: splitLines(participants),
-        technicalTerms: splitLines(vocabulary),
-      }),
-    onSuccess: ({ meeting }) => navigate(`/meetings/${meeting.id}`),
-  });
+  const [recordingStatus, setRecordingStatus] = useState<
+    "idle" | "recording" | "error" | "recorded"
+  >("idle");
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
+
+  const chunksRef = useRef<BlobPart[]>([]);
+  const timerRef = useRef<number | null>(null);
+
+  const formatDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const s = (seconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      if (timerRef.current !== null) window.clearInterval(timerRef.current);
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+        mediaRecorder.stop();
+      }
+    };
+  }, [audioUrl, mediaRecorder]);
+
+  const startRecording = async () => {
+    try {
+      setRecordingError(null);
+      setFile(null);
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      setAudioUrl(null);
+
+      console.log("Calling getUserMedia");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("Got stream");
+      const preferredTypes = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/mpeg",
+      ];
+
+      let mimeType = "";
+      if (typeof MediaRecorder !== "undefined") {
+        for (const t of preferredTypes) {
+          if (MediaRecorder.isTypeSupported(t)) {
+            mimeType = t;
+            break;
+          }
+        }
+      }
+
+      console.log("Creating MediaRecorder with mimeType:", mimeType);
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const type = recorder.mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type });
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        setRecordingStatus("recorded");
+
+        const ext = type.includes("mp4") ? "mp4" : "webm";
+        const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+        const liveFile = new File([blob], `live-meeting-${dateStr}.${ext}`, { type });
+        setFile(liveFile);
+
+        stream.getTracks().forEach((track) => track.stop());
+        if (timerRef.current !== null) window.clearInterval(timerRef.current);
+      };
+
+      console.log("Starting recorder...");
+      recorder.start();
+      console.log("Setting state to recording...");
+      setMediaRecorder(recorder);
+      setRecordingStatus("recording");
+      setRecordingDuration(0);
+
+      timerRef.current = window.setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      setRecordingStatus("error");
+      setRecordingError(
+        err instanceof Error ? err.message : "Failed to access microphone.",
+      );
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+      mediaRecorder.stop();
+    }
+  };
 
   const visibleError =
     uploadError instanceof ApiClientError || uploadError instanceof Error
@@ -240,7 +330,15 @@ export function NewMeetingPage() {
         description="Create persisted meeting metadata, upload private audio directly to Supabase Storage, and keep AI processing clearly marked as a later phase."
       />
 
-      <Tabs.Root defaultValue="upload" className="space-y-6">
+      <Tabs.Root
+        defaultValue="upload"
+        className="space-y-6"
+        onValueChange={() => {
+          setPhase("idle");
+          setFile(null);
+          if (recordingStatus === "recording") stopRecording();
+        }}
+      >
         <Tabs.List
           className="inline-flex rounded-card border border-border bg-surface p-1"
           aria-label="Meeting creation modes"
@@ -257,7 +355,7 @@ export function NewMeetingPage() {
             className="inline-flex items-center gap-2 rounded-control px-4 py-2 text-sm font-medium text-muted transition duration-fast data-[state=active]:bg-surface-raised data-[state=active]:text-primary"
           >
             <Mic2 size={16} aria-hidden="true" />
-            Start Live Meeting
+            Record Live
           </Tabs.Trigger>
         </Tabs.List>
 
@@ -394,16 +492,14 @@ export function NewMeetingPage() {
         </Tabs.Content>
 
         <Tabs.Content value="live">
-          <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-            <div className="space-y-5 rounded-card border border-border bg-surface p-5">
-              <h2 className="text-lg font-semibold text-primary">
-                Live meeting metadata
-              </h2>
-              <p className="text-sm leading-6 text-muted">
-                Phase 2 can create a live-meeting record for later WebSocket and
-                microphone work. It does not start browser recording or live
-                transcription.
-              </p>
+          <form
+            className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void runUpload();
+            }}
+          >
+            <section className="space-y-5 rounded-card border border-border bg-surface p-5">
               <MeetingMetadataFields
                 title={title}
                 setTitle={setTitle}
@@ -416,41 +512,148 @@ export function NewMeetingPage() {
                 vocabulary={vocabulary}
                 setVocabulary={setVocabulary}
               />
-              <div className="rounded-card border border-border bg-background/60 p-4">
-                <p className="flex items-center gap-2 text-sm font-medium text-primary">
-                  <ShieldCheck size={17} aria-hidden="true" />
-                  Privacy note
+            </section>
+
+            <section className="space-y-5 rounded-card border border-border bg-surface p-5">
+              <div className="flex min-h-64 flex-col items-center justify-center rounded-card border border-border bg-background/50 px-5 py-8 text-center transition duration-fast">
+                <Mic2 className="text-accent" size={36} aria-hidden="true" />
+                <h2 className="mt-4 text-lg font-semibold">Record live meeting</h2>
+                <p className="mt-2 max-w-md text-sm leading-6 text-muted">
+                  Record a live meeting from your microphone. When you stop, ScribeFlow
+                  uploads the recording and runs the same transcription, diarisation,
+                  summary and search pipeline. Clear audio improves diarisation
+                  accuracy.
                 </p>
-                <p className="mt-1 text-sm leading-6 text-muted">
-                  Audio provider keys and Supabase server credentials remain on the API.
-                  The browser only creates metadata in this phase.
-                </p>
+
+                {typeof MediaRecorder === "undefined" ||
+                !navigator.mediaDevices?.getUserMedia ? (
+                  <div className="mt-6 rounded-card border border-error/40 bg-error/10 p-4">
+                    <p className="text-sm font-semibold text-error">
+                      Browser not supported
+                    </p>
+                    <p className="mt-1 text-sm text-error/80">
+                      Your browser does not support audio recording. Please use a modern
+                      browser.
+                    </p>
+                  </div>
+                ) : recordingStatus === "idle" ||
+                  recordingStatus === "recorded" ||
+                  recordingStatus === "error" ? (
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    disabled={isUploading}
+                    className="mt-6 inline-flex cursor-pointer items-center gap-2 rounded-control border border-border bg-surface-raised px-4 py-2.5 text-sm font-semibold text-primary hover:border-accent/70 disabled:opacity-50"
+                  >
+                    <Mic2 size={17} aria-hidden="true" />
+                    Start recording
+                  </button>
+                ) : (
+                  <div className="mt-6 flex flex-col items-center gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="relative flex h-3 w-3">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-error opacity-75"></span>
+                        <span className="relative inline-flex h-3 w-3 rounded-full bg-error"></span>
+                      </span>
+                      <span className="font-mono text-lg font-semibold text-primary">
+                        {formatDuration(recordingDuration)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={stopRecording}
+                      className="inline-flex items-center gap-2 rounded-control bg-error px-4 py-2 text-sm font-semibold text-error-contrast hover:bg-error/90"
+                    >
+                      <X size={17} aria-hidden="true" />
+                      Stop recording
+                    </button>
+                  </div>
+                )}
+
+                {recordingStatus === "error" ? (
+                  <div className="mt-4 text-sm text-error text-center">
+                    {recordingError}
+                  </div>
+                ) : null}
+
+                {recordingStatus === "recorded" && audioUrl ? (
+                  <div className="mt-6 flex flex-col items-center gap-3 w-full max-w-sm">
+                    <audio src={audioUrl} controls className="w-full" />
+                    {file ? (
+                      <p className="text-sm text-primary">
+                        {file.name} · {formatBytes(file.size)}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
-              {liveMutation.error instanceof ApiClientError ? (
-                <ErrorState
-                  title="Live meeting record was not created"
-                  message={liveMutation.error.message}
-                  requestId={liveMutation.error.requestId}
+
+              {validationMessages.length > 0 ? (
+                <ValidationPanel messages={validationMessages} />
+              ) : null}
+
+              {phase !== "idle" ? (
+                <UploadProgressPanel
+                  phase={phase}
+                  fileName={file?.name ?? "Live Recording"}
+                  uploadedBytes={uploadedBytes}
+                  totalBytes={file?.size ?? 0}
+                  percent={uploadPercent}
                 />
               ) : null}
-              <button
-                type="button"
-                disabled={!title.trim() || liveMutation.isPending}
-                onClick={() => liveMutation.mutate()}
-                className="inline-flex items-center gap-2 rounded-control bg-accent px-4 py-2.5 text-sm font-semibold text-accent-contrast disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Mic2 size={18} aria-hidden="true" />
-                {liveMutation.isPending
-                  ? "Creating record"
-                  : "Create live meeting record"}
-              </button>
-            </div>
-            <EmptyState
-              icon={<Info size={20} aria-hidden="true" />}
-              title="Live recording is not implemented yet"
-              message="The API persists live-meeting metadata only. Microphone capture, live streaming and Deepgram sessions remain future phase work."
-            />
-          </section>
+
+              {visibleError ? (
+                <ErrorState
+                  title="Upload failed"
+                  message={visibleError.message}
+                  requestId={
+                    visibleError instanceof ApiClientError
+                      ? visibleError.requestId
+                      : null
+                  }
+                />
+              ) : null}
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="submit"
+                  disabled={
+                    !isUploadValid || isUploading || recordingStatus !== "recorded"
+                  }
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-control bg-accent px-4 py-3 text-sm font-semibold text-accent-contrast transition duration-fast hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <HardDriveUpload size={18} aria-hidden="true" />
+                  {phase === "creating"
+                    ? "Creating meeting"
+                    : phase === "uploading"
+                      ? "Uploading"
+                      : phase === "verifying"
+                        ? "Verifying upload"
+                        : "Use recording"}
+                </button>
+                {isUploading ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center gap-2 rounded-control border border-border px-4 py-3 text-sm font-semibold text-primary hover:border-error/60"
+                    onClick={() => {
+                      uploadRef.current?.abort(true);
+                      setPhase("failed");
+                      setUploadError(new Error("Upload was canceled."));
+                      if (activeMeetingId) {
+                        void failMeetingUpload(activeMeetingId, {
+                          errorCode: "CLIENT_UPLOAD_ABORTED",
+                          message: "Upload was canceled by the user.",
+                        }).catch(() => undefined);
+                      }
+                    }}
+                  >
+                    <X size={18} aria-hidden="true" />
+                    Cancel
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          </form>
         </Tabs.Content>
       </Tabs.Root>
     </div>

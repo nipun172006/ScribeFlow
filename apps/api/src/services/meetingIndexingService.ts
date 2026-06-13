@@ -90,6 +90,7 @@ export class MeetingIndexingService {
         start_ms: chunk.metadata.startMs ?? null,
         end_ms: chunk.metadata.endMs ?? null,
         speaker_names: chunk.metadata.speakerName ? [chunk.metadata.speakerName] : [],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         metadata: cleanMetadata as any,
         embedding: JSON.stringify(embedding.embedding),
         embedding_model: env.GEMINI_EMBEDDING_MODEL,
