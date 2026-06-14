@@ -34,6 +34,16 @@ const speakerParamsSchema = meetingIdParamsSchema.extend({
 const safeUploadFailureCode = (code: string) =>
   code.replace(/[^A-Z0-9_]/g, "_").slice(0, 80) || "UPLOAD_FAILED";
 
+const analysisFailureCodes = new Set([
+  "GEMINI_AUTH_FAILED",
+  "GEMINI_RATE_LIMITED",
+  "GEMINI_REQUEST_TIMEOUT",
+  "GEMINI_REQUEST_FAILED",
+  "GEMINI_INVALID_RESPONSE",
+  "MEETING_ANALYSIS_OUTPUT_INVALID",
+  "ANALYSIS_PERSISTENCE_FAILED",
+]);
+
 async function tryRemoveObject(
   dependencies: ApiDependencies,
   bucket: string | null,
@@ -411,8 +421,14 @@ export function createMeetingRoutes(dependencies: ApiDependencies) {
           );
         }
 
+        const canRetryFailedAnalysis =
+          detail.meeting.status === "failed" &&
+          detail.meeting.errorCode != null &&
+          analysisFailureCodes.has(detail.meeting.errorCode);
+
         if (
-          !["transcribed", "analysing", "completed"].includes(detail.meeting.status)
+          !["transcribed", "analysing", "completed"].includes(detail.meeting.status) &&
+          !canRetryFailedAnalysis
         ) {
           throw ApiError.conflict(
             "INVALID_MEETING_STATE",

@@ -18,6 +18,14 @@ const storageSql = readFileSync(
   "utf8",
 ).toLowerCase();
 
+const storageLimitSql = readFileSync(
+  resolve(
+    process.cwd(),
+    "../../supabase/migrations/20260614090000_align_audio_bucket_upload_limit.sql",
+  ),
+  "utf8",
+).toLowerCase();
+
 const transcriptionSql = readFileSync(
   resolve(
     process.cwd(),
@@ -72,6 +80,7 @@ describe("Supabase migration contract", () => {
     expect(storageSql).toContain("meeting-audio");
     expect(storageSql).toContain("public = false");
     expect(storageSql).toContain("262144000");
+    expect(storageLimitSql).toContain("52428800");
     expect(storageSql).toContain("audio/mpeg");
     expect(storageSql).toContain("audio/wav");
     expect(storageSql).toContain("video/mp4");

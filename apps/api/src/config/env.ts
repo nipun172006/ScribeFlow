@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { audioUploadPolicy } from "@scribeflow/shared";
 
 const emptyStringToUndefined = (value: unknown) =>
   typeof value === "string" && value.trim() === "" ? undefined : value;
@@ -45,7 +46,11 @@ const envSchema = z.object({
   SUPABASE_AUDIO_BUCKET: z.string().min(1).default("meeting-audio"),
   SUPABASE_SIGNED_UPLOAD_TTL_SECONDS: z.coerce.number().int().positive().default(7200),
   SUPABASE_SIGNED_DOWNLOAD_TTL_SECONDS: z.coerce.number().int().positive().default(900),
-  MAX_AUDIO_FILE_SIZE_BYTES: z.coerce.number().int().positive().default(262_144_000),
+  MAX_AUDIO_FILE_SIZE_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(audioUploadPolicy.maxFileSizeBytes),
 });
 
 export type Env = z.infer<typeof envSchema>;

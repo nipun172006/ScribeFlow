@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { audioUploadPolicy } from "@scribeflow/shared";
 import {
   assertAllowedFileSize,
   assertAllowedMimeType,
@@ -34,7 +35,9 @@ describe("audio upload validation", () => {
       "MIME type is not supported",
     );
     expect(() => assertAllowedFileSize(0)).toThrow("must be positive");
-    expect(() => assertAllowedFileSize(262_144_001)).toThrow("upload limit");
+    expect(() => assertAllowedFileSize(audioUploadPolicy.maxFileSizeBytes + 1)).toThrow(
+      "upload limit",
+    );
   });
 
   it("derives direct Supabase Storage TUS endpoints safely", () => {

@@ -572,6 +572,104 @@ describe("Phase 2 frontend integration", () => {
     expect(screen.getByRole("button", { name: /run analysis/i })).toBeInTheDocument();
   });
 
+  it("shows persisted analysis failure on meeting detail and allows retry", async () => {
+    const user = userEvent.setup();
+    apiClient.getMeetingDetail.mockResolvedValue({
+      meeting: makeMeeting({
+        status: "failed",
+        errorCode: "MEETING_ANALYSIS_OUTPUT_INVALID",
+        errorMessage:
+          "Gemini analysis output remained invalid after schema repair retry.",
+      }),
+      speakers: [],
+      transcriptSegments: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          meetingId,
+          speakerId: null,
+          rawSpeakerIndex: 0,
+          segmentIndex: 0,
+          startMs: 0,
+          endMs: 3000,
+          text: "We need posters for the event.",
+          confidence: 0.95,
+          words: [],
+        },
+      ],
+      summary: null,
+      actionItems: [],
+      topics: [],
+      chunkCount: 0,
+    } satisfies MeetingDetail);
+
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/meetings/${meetingId}`]}>
+        <Routes>
+          <Route path="/meetings/:meetingId" element={<MeetingDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/^Analysis failed$/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/remained invalid after schema repair retry/i),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /retry analysis/i }));
+
+    expect(apiClient.analyzeMeeting).toHaveBeenCalledWith(meetingId);
+  });
+
+  it("offers analysis retry instead of transcription retry after analysis failure", async () => {
+    const user = userEvent.setup();
+    apiClient.getMeetingDetail.mockResolvedValue({
+      meeting: makeMeeting({
+        status: "failed",
+        errorCode: "MEETING_ANALYSIS_OUTPUT_INVALID",
+        errorMessage:
+          "Gemini analysis output remained invalid after schema repair retry.",
+      }),
+      speakers: [],
+      transcriptSegments: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          meetingId,
+          speakerId: null,
+          rawSpeakerIndex: 0,
+          segmentIndex: 0,
+          startMs: 0,
+          endMs: 3000,
+          text: "We need posters for the event.",
+          confidence: 0.95,
+          words: [],
+        },
+      ],
+      summary: null,
+      actionItems: [],
+      topics: [],
+      chunkCount: 0,
+    } satisfies MeetingDetail);
+
+    renderWithProviders(
+      <MemoryRouter initialEntries={[`/meetings/${meetingId}/processing`]}>
+        <Routes>
+          <Route path="/meetings/:meetingId/processing" element={<ProcessingPage />} />
+          <Route path="/meetings/:meetingId" element={<MeetingDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/^Analysis failed$/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /retry transcription/i }),
+    ).not.toBeInTheDocument();
+    const retryButtons = screen.getAllByRole("button", { name: /retry analysis/i });
+
+    await user.click(retryButtons[0]!);
+
+    expect(apiClient.analyzeMeeting).toHaveBeenCalledWith(meetingId);
+  });
+
   it("jumps to transcript segment automatically if segmentId is in URL", async () => {
     const targetSegmentId = "44444444-4444-4444-8444-444444444444";
     apiClient.getMeetingDetail.mockResolvedValue({

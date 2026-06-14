@@ -807,6 +807,49 @@ describe("Phase 2 persistence API", () => {
     });
   });
 
+  it("allows retrying Gemini analysis after a stored analysis failure", async () => {
+    const failedAnalysisDetail = makeTranscribedDetail({
+      meeting: makeMeeting({
+        status: "failed",
+        fileSizeBytes: 1000,
+        errorCode: "MEETING_ANALYSIS_OUTPUT_INVALID",
+        errorMessage:
+          "Gemini analysis output remained invalid after schema repair retry.",
+      }),
+    });
+    const repository = makeRepository({
+      getMeetingDetail: vi.fn(async () => failedAnalysisDetail),
+    });
+    const meetingAnalysisService = makeMeetingAnalysisService();
+    const { app } = createMockedApp(
+      repository,
+      makeStorage(),
+      makeTranscriptionService(),
+      meetingAnalysisService,
+    );
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/analyze`)
+        .expect(200);
+
+      expect(response.body.meeting.status).toBe("completed");
+      expect(repository.markAnalysisStarted).toHaveBeenCalledWith(meetingId);
+      expect(meetingAnalysisService.analyseMeeting).toHaveBeenCalledWith(
+        expect.objectContaining({
+          meeting: expect.objectContaining({
+            status: "failed",
+            errorCode: "MEETING_ANALYSIS_OUTPUT_INVALID",
+          }),
+          segments: expect.arrayContaining([
+            expect.objectContaining({ id: transcriptSegmentId }),
+          ]),
+        }),
+      );
+      expect(repository.persistMeetingAnalysis).toHaveBeenCalled();
+    });
+  });
+
   it("returns persisted analysis without calling Gemini again", async () => {
     const persisted = await makeRepository().persistMeetingAnalysis({
       meetingId,

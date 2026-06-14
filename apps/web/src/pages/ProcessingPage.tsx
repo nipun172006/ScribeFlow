@@ -66,6 +66,16 @@ const statusOrder: Record<MeetingStatus, number> = {
   failed: -1,
 };
 
+const analysisFailureCodes = new Set([
+  "GEMINI_AUTH_FAILED",
+  "GEMINI_RATE_LIMITED",
+  "GEMINI_REQUEST_TIMEOUT",
+  "GEMINI_REQUEST_FAILED",
+  "GEMINI_INVALID_RESPONSE",
+  "MEETING_ANALYSIS_OUTPUT_INVALID",
+  "ANALYSIS_PERSISTENCE_FAILED",
+]);
+
 const autoStartedMeetingIds = new Set<string>();
 const autoStartedAnalysisIds = new Set<string>();
 
@@ -152,13 +162,21 @@ export function ProcessingPage() {
         .join(" ")
     : "Speaker-labelled transcript segments are persisted. Gemini summary and action extraction will start automatically from this processing page.";
   const activeIndex = meeting ? statusOrder[meeting.status] : -1;
+  const hasTranscript = (meetingQuery.data?.transcriptSegments.length ?? 0) > 0;
+  const isAnalysisFailure =
+    meeting?.status === "failed" &&
+    meeting.errorCode != null &&
+    analysisFailureCodes.has(meeting.errorCode) &&
+    hasTranscript &&
+    !meetingQuery.data?.summary;
   const canStartTranscription =
     meeting?.sourceType === "upload" &&
-    (meeting.status === "created" || meeting.status === "failed");
+    (meeting.status === "created" || (meeting.status === "failed" && !hasTranscript));
   const canStartAnalysis =
-    meeting?.status === "transcribed" &&
-    (meetingQuery.data?.transcriptSegments.length ?? 0) > 0 &&
+    (meeting?.status === "transcribed" || isAnalysisFailure) &&
+    hasTranscript &&
     !meetingQuery.data?.summary;
+  const canAutoStartAnalysis = meeting?.status === "transcribed" && canStartAnalysis;
 
   useEffect(() => {
     if (!meetingId || !canStartTranscription || meeting?.status !== "created") {
@@ -174,7 +192,7 @@ export function ProcessingPage() {
   }, [canStartTranscription, meeting?.status, meetingId, transcribeMutation]);
 
   useEffect(() => {
-    if (!meetingId || !canStartAnalysis) {
+    if (!meetingId || !canAutoStartAnalysis) {
       return;
     }
 
@@ -184,7 +202,7 @@ export function ProcessingPage() {
 
     autoStartedAnalysisIds.add(meetingId);
     analyzeMutation.mutate();
-  }, [analyzeMutation, canStartAnalysis, meetingId]);
+  }, [analyzeMutation, canAutoStartAnalysis, meetingId]);
 
   return (
     <div className="space-y-8">
@@ -212,6 +230,17 @@ export function ProcessingPage() {
                   <Play size={17} aria-hidden="true" />
                 )}
                 {meeting?.status === "failed" ? "Retry transcription" : "Start now"}
+              </button>
+            ) : null}
+            {isAnalysisFailure ? (
+              <button
+                type="button"
+                disabled={analyzeMutation.isPending}
+                onClick={() => analyzeMutation.mutate()}
+                className="inline-flex items-center gap-2 rounded-control bg-accent px-3 py-2 text-sm font-semibold text-accent-contrast transition duration-fast hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw size={17} aria-hidden="true" />
+                Retry analysis
               </button>
             ) : null}
             <Link to="/archive" className="sf-secondary-button px-3 py-2">
@@ -357,10 +386,39 @@ export function ProcessingPage() {
         ) : null}
 
         {meeting?.status === "failed" ? (
-          <ErrorState
-            title={meeting.errorCode ?? "Meeting failed"}
-            message={meeting.errorMessage ?? "The meeting failed during processing."}
-          />
+          isAnalysisFailure ? (
+            <div className="space-y-4">
+              <ErrorState
+                title="Analysis failed"
+                message={
+                  meeting.errorMessage ??
+                  "Gemini analysis failed after transcription was saved."
+                }
+              />
+              <div className="flex flex-wrap justify-center gap-3 rounded-card border border-border bg-surface p-4">
+                <button
+                  type="button"
+                  disabled={analyzeMutation.isPending}
+                  onClick={() => analyzeMutation.mutate()}
+                  className="inline-flex items-center gap-2 rounded-control bg-accent px-3 py-2 text-sm font-semibold text-accent-contrast transition duration-fast hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RefreshCw size={17} aria-hidden="true" />
+                  Retry analysis
+                </button>
+                <Link
+                  to={`/meetings/${meeting.id}`}
+                  className="inline-flex items-center gap-2 rounded-control border border-border bg-surface-raised px-3 py-2 text-sm font-semibold text-primary hover:border-accent/70"
+                >
+                  Open meeting
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <ErrorState
+              title={meeting.errorCode ?? "Meeting failed"}
+              message={meeting.errorMessage ?? "The meeting failed during processing."}
+            />
+          )
         ) : null}
 
         {!meeting && !meetingQuery.isLoading && !meetingQuery.error ? (

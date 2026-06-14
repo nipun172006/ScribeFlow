@@ -143,6 +143,6 @@ The API calls this RPC after normalizing Deepgram output. Controllers do not wri
 
 ## Private Storage Bucket
 
-Migration `20260611191000_create_private_audio_bucket.sql` creates or updates `meeting-audio` as a private Supabase Storage bucket.
+Migration `20260611191000_create_private_audio_bucket.sql` creates or updates `meeting-audio` as a private Supabase Storage bucket. Migration `20260614090000_align_audio_bucket_upload_limit.sql` aligns the bucket with the conservative Phase 9 application upload limit.
 
-Configuration: `public = false`, file size limit `262144000`, MIME allow-list for common audio/video meeting recordings. No anonymous storage policies are created.
+Configuration: `public = false`, file size limit `52428800`, MIME allow-list for common audio/video meeting recordings. No anonymous storage policies are created.

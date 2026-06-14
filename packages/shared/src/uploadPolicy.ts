@@ -1,5 +1,5 @@
 export const audioUploadPolicy = {
-  maxFileSizeBytes: 262_144_000,
+  maxFileSizeBytes: 52_428_800,
   chunkSizeBytes: 6 * 1024 * 1024,
   allowedExtensions: ["aac", "m4a", "mp3", "mp4", "mpeg", "oga", "ogg", "wav", "webm"],
   allowedMimeTypes: [

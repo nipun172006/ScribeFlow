@@ -4,12 +4,14 @@ import { useLocation, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
+  AlertTriangle,
   BarChart3,
   CheckSquare,
   FileText,
   ListChecks,
   MessageSquareText,
   Play,
+  RefreshCw,
   Save,
   Search,
   Tags,
@@ -49,6 +51,16 @@ const summarySections = [
   "Open questions",
   "Next steps",
 ] as const;
+
+const analysisFailureCodes = new Set([
+  "GEMINI_AUTH_FAILED",
+  "GEMINI_RATE_LIMITED",
+  "GEMINI_REQUEST_TIMEOUT",
+  "GEMINI_REQUEST_FAILED",
+  "GEMINI_INVALID_RESPONSE",
+  "MEETING_ANALYSIS_OUTPUT_INVALID",
+  "ANALYSIS_PERSISTENCE_FAILED",
+]);
 
 export function MeetingDetailPage() {
   const { meetingId } = useParams();
@@ -161,8 +173,14 @@ export function MeetingDetailPage() {
       ? persistedTopics
       : (detail?.summary?.topics ?? []);
   }, [detail?.summary?.topics, detail?.topics]);
+  const isAnalysisFailure =
+    meeting?.status === "failed" &&
+    meeting.errorCode != null &&
+    analysisFailureCodes.has(meeting.errorCode) &&
+    (detail?.transcriptSegments.length ?? 0) > 0 &&
+    !detail?.summary;
   const canRunAnalysis =
-    meeting?.status === "transcribed" &&
+    (meeting?.status === "transcribed" || isAnalysisFailure) &&
     (detail?.transcriptSegments.length ?? 0) > 0 &&
     !detail?.summary;
   const handleEvidenceJump = useCallback((segmentId: string) => {
@@ -293,6 +311,43 @@ export function MeetingDetailPage() {
                   </div>
                   <TopicSection topics={topics} />
                 </>
+              ) : isAnalysisFailure ? (
+                <section className="rounded-card border border-error/35 bg-error/10 p-5 shadow-soft">
+                  <div className="flex gap-3">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-control border border-error/30 bg-error/10 text-error">
+                      <AlertTriangle size={18} aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-base font-semibold text-primary">
+                        Analysis failed
+                      </h2>
+                      <p className="mt-2 text-sm leading-6 text-muted">
+                        {meeting.errorMessage ??
+                          "Gemini analysis failed after the transcript was saved."}
+                      </p>
+                      {meeting.errorCode ? (
+                        <p className="mt-2 text-xs font-medium uppercase tracking-[0.14em] text-error/85">
+                          {meeting.errorCode}
+                        </p>
+                      ) : null}
+                      <p className="mt-3 text-sm leading-6 text-muted">
+                        The transcript remains available. Retry analysis when Gemini is
+                        reachable, or use the transcript directly for review.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={analysisMutation.isPending}
+                        onClick={() => analysisMutation.mutate()}
+                        className="mt-4 inline-flex items-center gap-2 rounded-control bg-accent px-3 py-2 text-sm font-semibold text-accent-contrast transition duration-fast hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <RefreshCw size={17} aria-hidden="true" />
+                        {analysisMutation.isPending
+                          ? "Retrying analysis"
+                          : "Retry analysis"}
+                      </button>
+                    </div>
+                  </div>
+                </section>
               ) : (
                 <EmptyState
                   icon={<FileText size={20} aria-hidden="true" />}

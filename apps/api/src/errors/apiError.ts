@@ -196,14 +196,16 @@ export class ApiError extends Error {
 
   static geminiInvalidResponse(
     message = "Gemini returned meeting-analysis output that could not be parsed.",
+    details?: unknown,
   ) {
-    return new ApiError(502, "GEMINI_INVALID_RESPONSE", message);
+    return new ApiError(502, "GEMINI_INVALID_RESPONSE", message, details);
   }
 
   static meetingAnalysisOutputInvalid(
     message = "Gemini returned meeting-analysis output that failed validation.",
+    details?: unknown,
   ) {
-    return new ApiError(502, "MEETING_ANALYSIS_OUTPUT_INVALID", message);
+    return new ApiError(502, "MEETING_ANALYSIS_OUTPUT_INVALID", message, details);
   }
 
   static analysisPersistenceFailed() {

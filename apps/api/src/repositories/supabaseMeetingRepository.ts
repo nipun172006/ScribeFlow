@@ -311,7 +311,7 @@ export class SupabaseMeetingRepository implements MeetingRepository {
         error_message: null,
       })
       .eq("id", meetingId)
-      .in("status", ["transcribed", "analysing", "completed"])
+      .in("status", ["transcribed", "analysing", "completed", "failed"])
       .select("*")
       .maybeSingle();
 
