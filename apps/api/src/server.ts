@@ -8,11 +8,11 @@ const app = createApp();
 const server = createServer(app);
 const liveMeetingSocketServer = attachLiveMeetingSocket(server);
 
-server.listen(env.PORT, () => {
+server.listen(env.PORT, "0.0.0.0", () => {
   logger.info(
     {
       port: env.PORT,
-      clientOrigin: env.CLIENT_ORIGIN,
+      host: "0.0.0.0",
     },
     "scribeflow-api listening",
   );

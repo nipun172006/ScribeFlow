@@ -18,7 +18,24 @@ import type {
 const viteEnv = (
   import.meta as ImportMeta & { env?: Record<string, string | undefined> }
 ).env;
-const apiBaseUrl = viteEnv?.VITE_API_BASE_URL ?? "http://localhost:8787/api";
+export const resolveApiBaseUrl = (configuredBaseUrl?: string) => {
+  const trimmedBaseUrl = configuredBaseUrl?.trim().replace(/\/+$/, "") ?? "";
+
+  if (!trimmedBaseUrl) {
+    return "";
+  }
+
+  return trimmedBaseUrl.endsWith("/api")
+    ? trimmedBaseUrl.slice(0, -"/api".length)
+    : trimmedBaseUrl;
+};
+
+const apiBaseUrl = resolveApiBaseUrl(viteEnv?.VITE_API_BASE_URL);
+
+export const buildApiUrl = (path: string, baseUrl = apiBaseUrl) => {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${baseUrl}/api${normalizedPath}`;
+};
 
 export class ApiClientError extends Error {
   readonly status: number;
@@ -66,7 +83,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 async function jsonRequest<T>(path: string, init?: RequestInit) {
   return parseResponse<T>(
-    await fetch(`${apiBaseUrl}${path}`, {
+    await fetch(buildApiUrl(path), {
       ...init,
       headers: {
         "Content-Type": "application/json",

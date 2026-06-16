@@ -17,6 +17,7 @@
     "dev:web": "npm run build --workspace @scribeflow/shared && npm run dev --workspace @scribeflow/web",
     "dev:api": "npm run build --workspace @scribeflow/shared && npm run dev --workspace @scribeflow/api",
     "build": "npm run build --workspace @scribeflow/shared && npm run build --workspace @scribeflow/api && npm run build --workspace @scribeflow/web",
+    "start": "npm run start --workspace @scribeflow/api",
     "typecheck": "npm run build --workspace @scribeflow/shared && npm run typecheck --workspace @scribeflow/shared && npm run typecheck --workspace @scribeflow/api && npm run typecheck --workspace @scribeflow/web",
     "lint": "npm run lint --workspace @scribeflow/shared && npm run lint --workspace @scribeflow/api && npm run lint --workspace @scribeflow/web",
     "test": "npm run build --workspace @scribeflow/shared && npm run test --workspaces --if-present",

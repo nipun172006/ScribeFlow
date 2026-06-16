@@ -43,6 +43,30 @@ npm run dev
 
 The app will be available at `http://localhost:5173`.
 
+## Production Deployment
+
+ScribeFlow is configured for a single Render Web Service. In production, the
+compiled Express API serves both `/api/*` and the built React app from
+`apps/web/dist`.
+
+Use these Render commands:
+
+```bash
+npm ci && npm run build
+npm run start
+```
+
+Set the health check path to `/api/health`. Do not set `VITE_API_BASE_URL` on
+Render for the single-service deployment; when it is unset, the browser calls
+same-origin API routes such as `/api/meetings`. For local Vite development, keep
+`VITE_API_BASE_URL=http://localhost:8787` in `.env`.
+
+Set real Supabase, Deepgram and Gemini secrets in the Render dashboard, not in
+GitHub. `SUPABASE_SECRET_KEY` is preferred, and `SUPABASE_SERVICE_ROLE_KEY`
+exists only as a legacy fallback.
+
+See [Deployment](docs/DEPLOYMENT.md) for the full Render checklist.
+
 ## Verification Commands
 
 Use these scripts to verify integrations without running the frontend:
@@ -89,3 +113,4 @@ _(If formatting fails, run `npm run format` first)._
 - [Architecture](docs/ARCHITECTURE.md)
 - [Data Model](docs/DATA_MODEL.md)
 - [Product Spec](docs/PRODUCT_SPEC.md)
+- [Deployment](docs/DEPLOYMENT.md)

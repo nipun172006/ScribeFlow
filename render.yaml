@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: scribeflow
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.13.0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_AUDIO_BUCKET
+        value: meeting-audio
+      - key: SUPABASE_SIGNED_UPLOAD_TTL_SECONDS
+        value: "7200"
+      - key: SUPABASE_SIGNED_DOWNLOAD_TTL_SECONDS
+        value: "900"
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: DEEPGRAM_MODEL
+        value: nova-3
+      - key: DEEPGRAM_DIARIZE_MODEL
+        value: latest
+      - key: DEEPGRAM_DEFAULT_LANGUAGE
+        value: en
+      - key: DEEPGRAM_REQUEST_TIMEOUT_MS
+        value: "115000"
+      - key: DEEPGRAM_MAX_RETRIES
+        value: "1"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_REQUEST_TIMEOUT_MS
+        value: "60000"
+      - key: GEMINI_EMBEDDING_MODEL
+        value: gemini-embedding-2
+      - key: GEMINI_EMBEDDING_DIMENSIONS
+        value: "768"
+      - key: MAX_UPLOAD_BYTES
+        value: "52428800"
+      - key: LOG_LEVEL
+        value: info

@@ -234,10 +234,31 @@ Speaking time, participant count, action item count, completion rate and topic c
 - Silent mock fallbacks are forbidden.
 - Request IDs are included in all API errors.
 
-## Future Deployment Shape
+## Deployment Shape
 
-- Static web app hosted on Vercel, Netlify or Supabase hosting.
-- Node API hosted on a server platform that supports file upload and WebSockets.
-- Supabase Postgres, pgvector and Storage for persistence.
-- Environment variables managed by deployment platform secrets.
-- Background workers can be split from the API when processing grows.
+ScribeFlow is prepared for a single Render Web Service. Render builds the shared
+package, API and Vite frontend from the repository root. The production API
+process serves `/api/*` through Express routes and serves `apps/web/dist` for
+all non-API paths.
+
+```mermaid
+flowchart LR
+  Browser["Browser"] --> Render["Render Web Service"]
+  Render --> ApiRoutes["Express /api routes"]
+  Render --> StaticWeb["Vite build served by Express"]
+  ApiRoutes --> Deepgram["Deepgram"]
+  ApiRoutes --> Gemini["Gemini"]
+  ApiRoutes --> Supabase["Supabase Postgres, pgvector and Storage"]
+```
+
+This gives the project one production URL and same-origin browser API calls. It
+avoids separate frontend/backend CORS issues while preserving the security
+boundary that provider keys stay server-side.
+
+- Build command: `npm ci && npm run build`.
+- Start command: `npm run start`.
+- Health check: `/api/health`.
+- Environment variables are managed by Render secrets.
+- Do not set `VITE_API_BASE_URL` for the single-service Render deployment unless
+  intentionally using a separate API origin.
+- Background workers can still be split from the API later if processing grows.
