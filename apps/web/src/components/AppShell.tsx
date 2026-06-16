@@ -60,7 +60,7 @@ export function AppShell() {
 
       <header className="fixed left-0 right-0 top-0 z-50 px-3 pt-3 sm:px-5 sm:pt-5">
         <nav
-          className="mx-auto flex max-w-[1500px] items-center justify-between rounded-panel border border-white/10 bg-surface/80 px-4 py-3 shadow-soft backdrop-blur-2xl"
+          className="mx-auto flex max-w-[1560px] items-center justify-between rounded-panel border border-white/10 bg-surface/80 px-4 py-3 shadow-soft backdrop-blur-2xl 2xl:max-w-[1600px]"
           aria-label="Primary"
         >
           <Link to="/" className="min-w-0 rounded-control focus-visible:outline-accent">
@@ -116,7 +116,7 @@ export function AppShell() {
         </nav>
 
         {mobileOpen ? (
-          <div className="mx-auto mt-3 max-w-[1500px] rounded-panel border border-white/10 bg-zinc-950/90 p-3 shadow-soft backdrop-blur-2xl lg:hidden">
+          <div className="mx-auto mt-3 max-w-[1560px] rounded-panel border border-white/10 bg-zinc-950/90 p-3 shadow-soft backdrop-blur-2xl 2xl:max-w-[1600px] lg:hidden">
             <nav className="grid gap-1" aria-label="Mobile navigation">
               {navigationItems.map((item) => {
                 const Icon = item.icon;
@@ -148,8 +148,8 @@ export function AppShell() {
         ) : null}
       </header>
 
-      <main className="relative z-10 min-h-screen w-full px-4 pb-16 pt-28 sm:px-6 lg:px-10 xl:px-14">
-        <div className="mx-auto w-full max-w-[1500px]">
+      <main className="relative z-10 min-h-screen w-full px-5 pb-16 pt-28 sm:px-8 lg:px-10 xl:px-12">
+        <div className="mx-auto w-full max-w-[1560px] 2xl:max-w-[1600px]">
           <Outlet />
         </div>
       </main>

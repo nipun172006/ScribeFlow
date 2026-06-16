@@ -38,14 +38,14 @@ export function ArchivePage() {
   const pagination = meetingsQuery.data?.pagination;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-9">
       <PageHeader
         eyebrow="Archive"
         title="Meeting archive"
         description="Search and filter persisted meeting records. Open any meeting to review transcript, summary, actions, analytics and searchable evidence."
       />
 
-      <section className="space-y-4 rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl">
+      <section className="space-y-4 rounded-panel bg-white/[0.035] p-4 ring-1 ring-white/[0.07] backdrop-blur-xl md:p-5">
         <SearchInput
           label="Search archive"
           value={query}
@@ -146,6 +146,7 @@ export function ArchivePage() {
           icon={<Library size={20} aria-hidden="true" />}
           title="Archive is empty"
           message="No meetings are stored yet. Upload or live metadata records will appear here after Supabase is configured."
+          variant="open"
           action={
             <span className="inline-flex items-center gap-2 text-sm text-muted">
               <Search size={16} aria-hidden="true" />

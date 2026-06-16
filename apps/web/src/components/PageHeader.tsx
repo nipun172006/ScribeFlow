@@ -9,34 +9,43 @@ type PageHeaderProps = {
 
 export function PageHeader({ eyebrow, title, description, actions }: PageHeaderProps) {
   return (
-    <header className="sf-fade-up overflow-hidden rounded-panel border border-white/10 bg-white/[0.055] p-6 shadow-soft backdrop-blur-xl md:p-7 lg:p-8">
-      <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-        <div className="max-w-4xl">
+    <header className="sf-fade-up relative overflow-hidden py-8 sm:py-10 lg:py-12">
+      <div
+        className="pointer-events-none absolute -left-10 top-2 h-56 w-[32rem] rounded-full bg-[radial-gradient(circle,rgba(129,140,248,0.16),transparent_68%)] blur-2xl"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute right-0 top-10 h-44 w-[28rem] rounded-full bg-[radial-gradient(circle,rgba(54,211,194,0.11),transparent_70%)] blur-2xl"
+        aria-hidden="true"
+      />
+      <div className="relative flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div className="max-w-5xl">
           {eyebrow ? (
             <p className="mb-3 font-ui text-xs font-semibold uppercase tracking-[0.22em] text-accent">
               {eyebrow}
             </p>
           ) : null}
-          <h1 className="font-display text-4xl font-semibold leading-[1.02] tracking-normal text-primary md:text-5xl lg:text-6xl">
+          <h1 className="font-display text-4xl font-semibold leading-[1.02] tracking-normal text-primary md:text-5xl lg:text-[4rem]">
             {title}
           </h1>
           {description ? (
-            <p className="mt-4 max-w-3xl font-body text-base leading-7 text-muted md:text-lg">
+            <p className="mt-5 max-w-3xl font-body text-base leading-7 text-muted md:text-lg">
               {description}
             </p>
           ) : null}
         </div>
-        {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+        {actions ? (
+          <div className="flex flex-wrap gap-3 md:justify-end md:pb-2">{actions}</div>
+        ) : null}
       </div>
-      <div className="mt-6 h-px w-full bg-gradient-to-r from-transparent via-white/15 to-transparent" />
-      <div className="mt-4 flex flex-wrap gap-2 font-ui text-xs font-medium text-muted">
-        <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-emerald-200">
+      <div className="relative mt-5 flex flex-wrap gap-2 font-ui text-xs font-medium text-muted">
+        <span className="rounded-full border border-emerald-400/25 bg-emerald-400/[0.07] px-3 py-1 text-emerald-200">
           Secure server-side AI
         </span>
-        <span className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-cyan">
+        <span className="rounded-full border border-cyan/25 bg-cyan/[0.07] px-3 py-1 text-cyan">
           Evidence-backed
         </span>
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">
+        <span className="rounded-full border border-white/[0.09] bg-white/[0.025] px-3 py-1">
           No silent fallbacks
         </span>
       </div>

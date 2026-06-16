@@ -26,14 +26,14 @@ export function GlobalSearchPage() {
   const results = searchMutation.data?.results ?? [];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-9">
       <PageHeader
         eyebrow="Search"
         title="Ask across meetings"
         description="Natural-language search retrieves transcript chunks, summaries and timestamped sources."
       />
 
-      <section className="rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl">
+      <section className="rounded-[2rem] bg-white/[0.035] p-3 ring-1 ring-white/[0.08] backdrop-blur-xl sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="flex-1">
             <SearchInput
@@ -74,6 +74,7 @@ export function GlobalSearchPage() {
             icon={<Search size={20} aria-hidden="true" />}
             title="No results found"
             message={`No matches found for "${searchMutation.variables}". Try a different query.`}
+            variant="open"
           />
         )}
 
@@ -146,6 +147,7 @@ export function GlobalSearchPage() {
           icon={<Search size={20} aria-hidden="true" />}
           title="Semantic Search"
           message="Enter a question or topic above to find relevant moments across all your indexed meetings."
+          variant="open"
         />
       )}
     </div>

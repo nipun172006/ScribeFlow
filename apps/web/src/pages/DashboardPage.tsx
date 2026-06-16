@@ -89,7 +89,7 @@ export function DashboardPage() {
   }, [recentMeetings, details]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-9">
       <PageHeader
         eyebrow="Workspace"
         title="Meeting intelligence, ready for every recording"
@@ -97,7 +97,7 @@ export function DashboardPage() {
       />
 
       <section
-        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4"
         aria-label="Workspace metrics"
       >
         <MetricCard
@@ -138,7 +138,7 @@ export function DashboardPage() {
         />
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
+      <div className="grid gap-8 xl:grid-cols-[1.45fr_1fr]">
         <section className="space-y-4" aria-labelledby="recent-meetings">
           <div className="flex items-center justify-between gap-3">
             <h2 id="recent-meetings" className="text-lg font-semibold">
@@ -167,6 +167,7 @@ export function DashboardPage() {
               icon={<FileAudio size={20} aria-hidden="true" />}
               title="No meetings stored yet"
               message="Supabase-backed meeting records will appear here after you create upload or live metadata."
+              variant="open"
               action={
                 <Link to="/meetings/new" className="sf-secondary-button px-3 py-2">
                   <Plus size={16} aria-hidden="true" />
@@ -193,13 +194,14 @@ export function DashboardPage() {
               icon={<Tags size={20} aria-hidden="true" />}
               title="No topics detected"
               message="Topics will appear here after meetings have completed Gemini analysis. Cross-meeting aggregation works from recent analysed meetings."
+              variant="open"
             />
           ) : (
-            <div className="flex flex-wrap gap-2 rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl">
+            <div className="flex flex-wrap gap-2 rounded-panel bg-white/[0.025] p-5 ring-1 ring-white/[0.06] backdrop-blur-xl">
               {metrics.topTopics.map(([topic, count]) => (
                 <span
                   key={topic}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-surface-raised/80 px-3 py-1 text-sm font-medium text-primary shadow-soft"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1 text-sm font-medium text-primary"
                 >
                   {topic}
                   <span className="text-xs text-muted tabular-nums">({count})</span>

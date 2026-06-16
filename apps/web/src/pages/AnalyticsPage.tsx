@@ -41,7 +41,7 @@ const chartTheme = {
 
 function AnalyticsPanel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-card border border-white/10 bg-white/[0.06] p-5 shadow-soft backdrop-blur-xl">
+    <section className="rounded-card border border-white/10 bg-white/[0.055] p-5 shadow-soft backdrop-blur-xl">
       <h2 className="font-display text-lg font-semibold text-primary">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>
@@ -223,6 +223,7 @@ export function AnalyticsPage() {
               icon={<Clock3 size={20} aria-hidden="true" />}
               title="No speaker analytics"
               message="Speaking time will appear here after meetings are transcribed."
+              variant="open"
             />
           ) : (
             <ChartFrame>
@@ -267,6 +268,7 @@ export function AnalyticsPage() {
               icon={<CheckCircle2 size={20} aria-hidden="true" />}
               title="No action-item analytics"
               message="Completion rate will be computed from stored open and completed tasks."
+              variant="open"
             />
           ) : (
             <div className="flex min-h-64 flex-col items-center justify-center gap-5 rounded-card border border-white/10 bg-surface-raised/70 px-5 py-8 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
@@ -298,6 +300,7 @@ export function AnalyticsPage() {
               icon={<Tags size={20} aria-hidden="true" />}
               title="No recurring topics"
               message="Topic counts will be aggregated from meeting analysis records."
+              variant="open"
             />
           ) : (
             <div className="flex flex-wrap gap-2">

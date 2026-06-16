@@ -423,7 +423,7 @@ export function NewMeetingPage() {
       : null;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-9">
       <PageHeader
         eyebrow="Capture"
         title="Create a meeting"
@@ -440,7 +440,7 @@ export function NewMeetingPage() {
         }}
       >
         <Tabs.List
-          className="inline-flex rounded-card border border-white/10 bg-white/[0.06] p-1 shadow-soft backdrop-blur-xl"
+          className="inline-flex rounded-full bg-white/[0.035] p-1 ring-1 ring-white/[0.08] backdrop-blur-xl"
           aria-label="Meeting creation modes"
         >
           <Tabs.Trigger
