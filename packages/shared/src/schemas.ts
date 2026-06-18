@@ -298,6 +298,7 @@ export const meetingDetailSchema = z.object({
   actionItems: z.array(actionItemSchema),
   topics: z.array(meetingTopicSchema),
   chunkCount: z.number().int().nonnegative(),
+  analysis: structuredMeetingAnalysisSchema.nullable().optional(),
 });
 
 export const transcriptionSummarySchema = z.object({
