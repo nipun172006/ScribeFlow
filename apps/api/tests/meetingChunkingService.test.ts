@@ -226,4 +226,92 @@ describe("Meeting Chunking Service", () => {
       expect(chunk.metadata.kind).toBe(chunk.kind);
     }
   });
+
+  it("falls back to 'Speaker N' when a segment references an unmapped raw index", () => {
+    const detail: MeetingDetail = {
+      ...mockMeetingDetail,
+      speakers: [],
+      transcriptSegments: [
+        {
+          ...mockMeetingDetail.transcriptSegments[0]!,
+          speakerId: null,
+          rawSpeakerIndex: 2,
+        },
+      ],
+    };
+
+    const chunks = createMeetingChunks(detail);
+    const transcriptChunk = chunks.find((c) => c.kind === "transcript");
+
+    // rawSpeakerIndex is zero-based, so index 2 renders as the human-friendly "Speaker 3".
+    expect(transcriptChunk?.metadata.speakerName).toBe("Speaker 3");
+  });
+
+  it("falls back to 'Unknown speaker' when no speaker information is available", () => {
+    const detail: MeetingDetail = {
+      ...mockMeetingDetail,
+      speakers: [],
+      transcriptSegments: [
+        {
+          ...mockMeetingDetail.transcriptSegments[0]!,
+          speakerId: null,
+          rawSpeakerIndex: null,
+        },
+      ],
+    };
+
+    const chunks = createMeetingChunks(detail);
+    const transcriptChunk = chunks.find((c) => c.kind === "transcript");
+
+    expect(transcriptChunk?.metadata.speakerName).toBe("Unknown speaker");
+  });
+
+  it("skips transcript segments whose text is only whitespace", () => {
+    const detail: MeetingDetail = {
+      ...mockMeetingDetail,
+      transcriptSegments: [
+        { ...mockMeetingDetail.transcriptSegments[0]!, text: "   \n\t  " },
+        { ...mockMeetingDetail.transcriptSegments[1]! },
+      ],
+    };
+
+    const chunks = createMeetingChunks(detail);
+    expect(chunks.filter((c) => c.kind === "transcript").length).toBe(1);
+  });
+
+  it("truncates long action-item titles to 50 characters with an ellipsis", () => {
+    const longTask =
+      "Prepare a fully detailed launch checklist covering every single dependency";
+    const detail: MeetingDetail = {
+      ...mockMeetingDetail,
+      actionItems: [{ ...mockMeetingDetail.actionItems[0]!, task: longTask }],
+    };
+
+    const chunks = createMeetingChunks(detail);
+    const actionChunk = chunks.find((c) => c.kind === "action_item");
+
+    expect(actionChunk?.title).toBe(`Action: ${longTask.substring(0, 50)}...`);
+    // The full task text is still preserved in the chunk body for retrieval.
+    expect(actionChunk?.text).toBe(longTask);
+  });
+
+  it("does not append an ellipsis to short action-item titles", () => {
+    const chunks = createMeetingChunks(mockMeetingDetail);
+    const actionChunk = chunks.find((c) => c.kind === "action_item");
+
+    expect(actionChunk?.title).toBe("Action: Prepare launch checklist");
+    expect(actionChunk?.title).not.toContain("...");
+  });
+
+  it("produces no chunks for a meeting without transcript, summary, topics or actions", () => {
+    const detail: MeetingDetail = {
+      ...mockMeetingDetail,
+      transcriptSegments: [],
+      summary: null,
+      topics: [],
+      actionItems: [],
+    };
+
+    expect(createMeetingChunks(detail)).toHaveLength(0);
+  });
 });
