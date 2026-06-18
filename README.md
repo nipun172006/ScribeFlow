@@ -114,3 +114,12 @@ _(If formatting fails, run `npm run format` first)._
 - [Data Model](docs/DATA_MODEL.md)
 - [Product Spec](docs/PRODUCT_SPEC.md)
 - [Deployment](docs/DEPLOYMENT.md)
+
+
+## Future Improvements
+
+- Real-time meeting transcription
+- Calendar integration
+- Multi-language support
+- Meeting export to PDF
+- AI-generated meeting insights dashboard
