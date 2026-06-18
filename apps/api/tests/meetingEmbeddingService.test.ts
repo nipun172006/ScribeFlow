@@ -115,4 +115,71 @@ describe("GeminiMeetingEmbeddingService", () => {
 
     await expect(service.embedText("hello")).rejects.toThrow();
   });
+
+  it("maps a 429 response to a rate-limit error", async () => {
+    const { GeminiMeetingEmbeddingService } = await loadService();
+    const embedContent = vi.fn(async () => {
+      throw { code: 429, message: "Too Many Requests" };
+    });
+
+    const service = new GeminiMeetingEmbeddingService(() => ({
+      models: { embedContent },
+    }));
+
+    await expect(service.embedText("hello")).rejects.toThrow(/rate.?limit/i);
+  });
+
+  it("maps abort/timeout failures to a timeout error", async () => {
+    const { GeminiMeetingEmbeddingService } = await loadService();
+    const embedContent = vi.fn(async () => {
+      const error = new Error("operation timed out");
+      error.name = "AbortError";
+      throw error;
+    });
+
+    const service = new GeminiMeetingEmbeddingService(() => ({
+      models: { embedContent },
+    }));
+
+    await expect(service.embedText("hello")).rejects.toThrow(/timed out|timeout/i);
+  });
+
+  it("maps unknown failures to a generic request-failed error", async () => {
+    const { GeminiMeetingEmbeddingService } = await loadService();
+    const embedContent = vi.fn(async () => {
+      throw new Error("something unexpected");
+    });
+
+    const service = new GeminiMeetingEmbeddingService(() => ({
+      models: { embedContent },
+    }));
+
+    await expect(service.embedText("hello")).rejects.toThrow();
+  });
+
+  it("rejects an empty string that appears partway through a batch", async () => {
+    const { GeminiMeetingEmbeddingService } = await loadService();
+    const embedContent = vi.fn(async () => ({
+      embeddings: [{ values: mockEmbedding }],
+    }));
+
+    const service = new GeminiMeetingEmbeddingService(() => ({
+      models: { embedContent },
+    }));
+
+    await expect(service.embedTexts(["valid", "   "])).rejects.toThrow(
+      "cannot be empty",
+    );
+  });
+
+  it("treats an empty embedding array from Gemini as an invalid response", async () => {
+    const { GeminiMeetingEmbeddingService } = await loadService();
+    const embedContent = vi.fn(async () => ({ embeddings: [{ values: [] }] }));
+
+    const service = new GeminiMeetingEmbeddingService(() => ({
+      models: { embedContent },
+    }));
+
+    await expect(service.embedText("hello")).rejects.toThrow();
+  });
 });
