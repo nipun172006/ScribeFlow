@@ -47,10 +47,10 @@ export function ActionItemRow({
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-primary">{item.task}</p>
-          <p className="mt-1 text-sm text-muted">
-            Owner: {item.ownerName ?? "Unassigned"} · Deadline:{" "}
-            {item.deadlineText ?? item.deadline ?? "Not mentioned"}
-          </p>
+          <div className="mt-1 text-sm text-muted space-y-1">
+            <p>Owner: {item.ownerName ?? "Unassigned"}</p>
+            <p>Deadline: {item.deadlineText ?? item.deadline ?? "Not mentioned"}</p>
+          </div>
           {item.confidence != null ? (
             <p className="mt-1 text-xs font-medium text-muted">
               Confidence {(item.confidence * 100).toFixed(0)}%
