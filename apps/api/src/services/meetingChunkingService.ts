@@ -94,6 +94,20 @@ function chunkStringArray(
     .filter((chunk): chunk is MeetingChunk => chunk !== null);
 }
 
+/**
+ * Flattens a meeting into the discrete, embeddable chunks used for retrieval.
+ *
+ * Each transcript segment becomes its own `transcript` chunk, and every
+ * populated summary field (executive overview, key decisions, discussion
+ * points, open questions, next steps), topic and action item is emitted as a
+ * typed chunk. Empty or whitespace-only entries are skipped so that no blank
+ * chunks reach the embedding service.
+ *
+ * @param detail - The fully hydrated meeting, including transcript, speakers,
+ *   summary, topics and action items.
+ * @returns The list of chunks ready to be embedded and indexed. May be empty
+ *   when the meeting has no transcript, summary, topics or action items.
+ */
 export function createMeetingChunks(detail: MeetingDetail): MeetingChunk[] {
   const chunks: MeetingChunk[] = [];
 
