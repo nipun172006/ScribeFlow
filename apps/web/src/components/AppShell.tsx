@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { cx } from "../lib/classNames";
+import { ScrollToTopButton } from "./ScrollToTopButton";
 
 const navigationItems = [
   { label: "Dashboard", href: "/", icon: Home, end: true },
@@ -153,6 +154,8 @@ export function AppShell() {
           <Outlet />
         </div>
       </main>
+
+      <ScrollToTopButton />
     </div>
   );
 }

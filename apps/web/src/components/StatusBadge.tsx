@@ -27,6 +27,14 @@ type StatusBadgeProps = {
   status: MeetingStatus;
 };
 
+/** Statuses that indicate active background work — shown with a pulse dot. */
+const inProgressStatuses = new Set<MeetingStatus>([
+  "uploading",
+  "transcribing",
+  "analysing",
+  "indexing",
+]);
+
 export function StatusBadge({ status }: StatusBadgeProps) {
   const tone =
     status === "completed"
@@ -35,15 +43,23 @@ export function StatusBadge({ status }: StatusBadgeProps) {
         ? "border-danger/40 bg-danger/10 text-danger"
         : "border-warning/40 bg-warning/10 text-warning";
 
+  const isInProgress = inProgressStatuses.has(status);
+
   return (
     <span
       title={statusDescriptions[status]}
       aria-label={`${statusLabels[status]}: ${statusDescriptions[status]}`}
       className={cx(
-        "inline-flex items-center rounded-control border px-2.5 py-1 text-xs font-semibold",
+        "inline-flex items-center gap-1.5 rounded-control border px-2.5 py-1 text-xs font-semibold",
         tone,
       )}
     >
+      {isInProgress && (
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 animate-pulse rounded-full bg-current"
+        />
+      )}
       {statusLabels[status]}
     </span>
   );
