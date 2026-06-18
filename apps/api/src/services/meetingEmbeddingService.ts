@@ -46,11 +46,31 @@ export class GeminiMeetingEmbeddingService implements MeetingEmbeddingService {
     return providerConfig.geminiConfigured;
   }
 
+  /**
+   * Embeds a single piece of text. Convenience wrapper around
+   * {@link embedTexts} for the common single-input case.
+   *
+   * @param text - Non-empty text to embed.
+   * @returns The embedding vector and its dimensionality.
+   */
   async embedText(text: string): Promise<EmbeddingResult> {
     const results = await this.embedTexts([text]);
     return results[0]!;
   }
 
+  /**
+   * Embeds one or more texts via the Gemini embedding model.
+   *
+   * Each returned vector is validated to match the configured dimensionality
+   * ({@link env.GEMINI_EMBEDDING_DIMENSIONS}); a mismatch is treated as an
+   * invalid provider response. Upstream Gemini failures are normalised into
+   * the appropriate {@link ApiError} (auth, rate limit, timeout or generic).
+   *
+   * @param texts - Non-empty array of non-empty strings to embed.
+   * @returns One {@link EmbeddingResult} per input text, in input order.
+   * @throws ApiError When the service is unconfigured, an input is empty, or
+   *   the Gemini request fails.
+   */
   async embedTexts(texts: string[]): Promise<EmbeddingResult[]> {
     if (!this.isConfigured()) {
       throw ApiError.geminiNotConfigured();

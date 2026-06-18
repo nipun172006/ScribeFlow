@@ -25,6 +25,21 @@ export class SupabaseMeetingSearchService implements MeetingSearchService {
     private readonly embeddingService: MeetingEmbeddingService,
   ) {}
 
+  /**
+   * Runs a semantic search across all indexed meeting chunks.
+   *
+   * The query is embedded and passed to the `match_meeting_chunks` RPC, which
+   * performs the vector similarity search in the database. Matching meeting
+   * titles are then resolved in a single follow-up query. A failure to resolve
+   * titles is non-fatal and degrades to "Unknown Meeting".
+   *
+   * @param query - The user's search text. Must be non-empty after trimming.
+   * @param limit - Maximum number of results to return; clamped to the range
+   *   [1, 100]. Defaults to 10.
+   * @returns The ranked search results, ordered by descending similarity.
+   * @throws ApiError When the query is empty, the limit is below 1, or the
+   *   database search fails.
+   */
   async search(query: string, limit: number = 10): Promise<SearchResult[]> {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) {
