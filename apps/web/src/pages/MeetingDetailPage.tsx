@@ -688,9 +688,12 @@ function SummarySection({
       {values && values.length > 0 ? (
         <ul className="mt-3 space-y-3 text-sm leading-6 text-muted">
           {values.map((value, idx) => {
-            const isObject = typeof value === "object" && value !== null && "text" in value;
+            const isObject =
+              typeof value === "object" && value !== null && "text" in value;
             const text = isObject ? (value as { text: string }).text : String(value);
-            const evidenceSegmentIds = isObject ? (value as { evidenceSegmentIds?: string[] }).evidenceSegmentIds : [];
+            const evidenceSegmentIds = isObject
+              ? (value as { evidenceSegmentIds?: string[] }).evidenceSegmentIds
+              : [];
             const primaryEvidenceSegmentId = evidenceSegmentIds?.[0] ?? null;
 
             return (

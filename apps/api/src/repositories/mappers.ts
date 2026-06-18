@@ -170,7 +170,9 @@ export function mapMeetingTopic(row: TopicRow): MeetingTopic {
   };
 }
 
-export const asEvidenceItems = (value: Json): StructuredMeetingAnalysis["keyDecisions"] =>
+export const asEvidenceItems = (
+  value: Json,
+): StructuredMeetingAnalysis["keyDecisions"] =>
   Array.isArray(value)
     ? value
         .map((item) => {

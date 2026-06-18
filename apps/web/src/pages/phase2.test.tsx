@@ -565,7 +565,9 @@ describe("Phase 2 frontend integration", () => {
 
     // Test evidence jump from a summary point
     await user.click(screen.getByRole("tab", { name: /overview/i }));
-    await user.click(screen.getByRole("button", { name: /jump to evidence for launch next friday/i }));
+    await user.click(
+      screen.getByRole("button", { name: /jump to evidence for launch next friday/i }),
+    );
     expect(screen.getByRole("tab", { name: /transcript/i })).toHaveAttribute(
       "data-state",
       "active",
