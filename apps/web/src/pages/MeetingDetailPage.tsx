@@ -9,6 +9,7 @@ import {
   CheckSquare,
   FileText,
   ListChecks,
+  LocateFixed,
   MessageSquareText,
   Play,
   RefreshCw,
@@ -306,7 +307,12 @@ export function MeetingDetailPage() {
                 <>
                   <div className="grid gap-4 lg:grid-cols-2">
                     {summarySections.map((section) => (
-                      <SummarySection key={section} section={section} detail={detail} />
+                      <SummarySection
+                        key={section}
+                        section={section}
+                        detail={detail}
+                        onEvidenceClick={handleEvidenceJump}
+                      />
                     ))}
                   </div>
                   <TopicSection topics={topics} />
@@ -651,22 +657,25 @@ function MetadataCell({ label, value }: { label: string; value: string }) {
 function SummarySection({
   section,
   detail,
+  onEvidenceClick,
 }: {
   section: (typeof summarySections)[number];
   detail: MeetingDetail;
+  onEvidenceClick?: (segmentId: string) => void;
 }) {
   const summary = detail.summary;
+  const analysis = detail.analysis;
   const values =
     section === "Attendees"
       ? summary?.attendees
       : section === "Key decisions"
-        ? summary?.keyDecisions
+        ? (analysis?.keyDecisions ?? summary?.keyDecisions)
         : section === "Discussion points"
-          ? summary?.discussionPoints
+          ? (analysis?.discussionPoints ?? summary?.discussionPoints)
           : section === "Open questions"
-            ? summary?.openQuestions
+            ? (analysis?.openQuestions ?? summary?.openQuestions)
             : section === "Next steps"
-              ? summary?.nextSteps
+              ? (analysis?.nextSteps ?? summary?.nextSteps)
               : null;
   const overview = section === "Executive overview" ? summary?.executiveOverview : null;
 
@@ -677,10 +686,29 @@ function SummarySection({
         <p className="mt-3 text-sm leading-6 text-muted">{overview}</p>
       ) : null}
       {values && values.length > 0 ? (
-        <ul className="mt-3 space-y-2 text-sm leading-6 text-muted">
-          {values.map((value) => (
-            <li key={value}>{value}</li>
-          ))}
+        <ul className="mt-3 space-y-3 text-sm leading-6 text-muted">
+          {values.map((value, idx) => {
+            const isObject = typeof value === "object" && value !== null && "text" in value;
+            const text = isObject ? (value as { text: string }).text : String(value);
+            const evidenceSegmentIds = isObject ? (value as { evidenceSegmentIds?: string[] }).evidenceSegmentIds : [];
+            const primaryEvidenceSegmentId = evidenceSegmentIds?.[0] ?? null;
+
+            return (
+              <li key={idx} className="flex items-start justify-between gap-3 group">
+                <span className="flex-1">{text}</span>
+                {primaryEvidenceSegmentId && onEvidenceClick && (
+                  <button
+                    type="button"
+                    onClick={() => onEvidenceClick(primaryEvidenceSegmentId)}
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control border border-white/10 bg-white/[0.055] text-primary transition opacity-0 group-hover:opacity-100 focus:opacity-100 hover:border-accent/70"
+                    aria-label={`Jump to evidence for ${text}`}
+                  >
+                    <LocateFixed size={12} aria-hidden="true" />
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       ) : null}
       {!overview && (!values || values.length === 0) ? (

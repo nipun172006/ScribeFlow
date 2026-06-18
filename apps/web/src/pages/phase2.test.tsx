@@ -465,6 +465,36 @@ describe("Phase 2 frontend integration", () => {
         nextSteps: ["Publish the announcement"],
         topics: ["Launch"],
       },
+      analysis: {
+        attendees: ["Priya", "Arjun"],
+        executiveOverview: "The launch plan is ready.",
+        keyDecisions: [
+          {
+            text: "Launch next Friday",
+            evidenceSegmentIds: [evidenceSegmentId],
+          },
+        ],
+        discussionPoints: [
+          {
+            text: "Marketing assets",
+            evidenceSegmentIds: [evidenceSegmentId],
+          },
+        ],
+        openQuestions: [
+          {
+            text: "Who owns the final review?",
+            evidenceSegmentIds: [evidenceSegmentId],
+          },
+        ],
+        nextSteps: [
+          {
+            text: "Publish the announcement",
+            evidenceSegmentIds: [evidenceSegmentId],
+          },
+        ],
+        topics: ["Launch"],
+        actionItems: [],
+      },
       actionItems: [
         {
           id: "55555555-5555-4555-8555-555555555555",
@@ -526,6 +556,16 @@ describe("Phase 2 frontend integration", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /jump to evidence/i }));
+    expect(screen.getByRole("tab", { name: /transcript/i })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    expect(screen.getByText(/we need posters for the event/i)).toBeInTheDocument();
+    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+
+    // Test evidence jump from a summary point
+    await user.click(screen.getByRole("tab", { name: /overview/i }));
+    await user.click(screen.getByRole("button", { name: /jump to evidence for launch next friday/i }));
     expect(screen.getByRole("tab", { name: /transcript/i })).toHaveAttribute(
       "data-state",
       "active",

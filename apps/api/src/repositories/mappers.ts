@@ -10,6 +10,7 @@ import {
   type MeetingTopic,
   type TranscriptSegment,
   type TranscriptWord,
+  type StructuredMeetingAnalysis,
 } from "@scribeflow/shared";
 import type { Database, Json } from "../types/database.types.js";
 
@@ -169,6 +170,65 @@ export function mapMeetingTopic(row: TopicRow): MeetingTopic {
   };
 }
 
+export const asEvidenceItems = (value: Json): StructuredMeetingAnalysis["keyDecisions"] =>
+  Array.isArray(value)
+    ? value
+        .map((item) => {
+          if (typeof item === "string" && item.trim()) {
+            return {
+              text: item,
+              evidenceSegmentIds: [],
+            };
+          }
+
+          if (!item || typeof item !== "object" || Array.isArray(item)) {
+            return null;
+          }
+
+          const record = item as Record<string, unknown>;
+          const text = typeof record.text === "string" ? record.text.trim() : "";
+          const evidenceSegmentIds = Array.isArray(record.evidenceSegmentIds)
+            ? record.evidenceSegmentIds.filter(
+                (segmentId): segmentId is string => typeof segmentId === "string",
+              )
+            : [];
+
+          return text ? { text, evidenceSegmentIds } : null;
+        })
+        .filter(
+          (item): item is StructuredMeetingAnalysis["keyDecisions"][number] =>
+            item !== null,
+        )
+    : [];
+
+export function buildAnalysisFromRows(input: {
+  summary: SummaryRow;
+  actionItems: ActionItemRow[];
+  topics: TopicRow[];
+}): StructuredMeetingAnalysis {
+  return {
+    attendees: asStringArray(input.summary.attendees),
+    executiveOverview: input.summary.executive_overview,
+    keyDecisions: asEvidenceItems(input.summary.key_decisions),
+    discussionPoints: asEvidenceItems(input.summary.discussion_points),
+    openQuestions: asEvidenceItems(input.summary.open_questions),
+    nextSteps: asEvidenceItems(input.summary.next_steps),
+    topics: input.topics.map((topic) => topic.display_label),
+    actionItems: input.actionItems.map((item) => ({
+      task: item.task,
+      ownerName: item.owner_name,
+      deadlineText: item.deadline_text,
+      confidence: item.confidence ?? 0,
+      evidenceSegmentIds:
+        item.evidence_segment_ids.length > 0
+          ? item.evidence_segment_ids
+          : item.source_segment_id
+            ? [item.source_segment_id]
+            : [],
+    })),
+  };
+}
+
 export function mapMeetingDetail(input: {
   meeting: MeetingRow;
   speakers: SpeakerRow[];
@@ -186,5 +246,12 @@ export function mapMeetingDetail(input: {
     actionItems: input.actionItems.map(mapActionItem),
     topics: input.topics.map(mapMeetingTopic),
     chunkCount: input.chunkCount,
+    analysis: input.summary
+      ? buildAnalysisFromRows({
+          summary: input.summary,
+          actionItems: input.actionItems,
+          topics: input.topics,
+        })
+      : null,
   };
 }
