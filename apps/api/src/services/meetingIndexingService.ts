@@ -2,7 +2,7 @@ import type { MeetingDetail } from "@scribeflow/shared";
 import { logger } from "../config/logger.js";
 import { ApiError } from "../errors/apiError.js";
 import type { ScribeFlowSupabaseClient } from "../config/supabaseClient.js";
-import type { Database } from "../types/database.types.js";
+import type { Database, Json } from "../types/database.types.js";
 import { createMeetingChunks } from "./meetingChunkingService.js";
 import type { MeetingEmbeddingService } from "./meetingEmbeddingService.js";
 import { env } from "../config/env.js";
@@ -90,7 +90,7 @@ export class MeetingIndexingService {
         start_ms: chunk.metadata.startMs ?? null,
         end_ms: chunk.metadata.endMs ?? null,
         speaker_names: chunk.metadata.speakerName ? [chunk.metadata.speakerName] : [],
-        metadata: cleanMetadata as any,
+        metadata: cleanMetadata as Json,
         embedding: JSON.stringify(embedding.embedding),
         embedding_model: env.GEMINI_EMBEDDING_MODEL,
         created_at: now,
