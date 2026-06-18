@@ -115,7 +115,6 @@ _(If formatting fails, run `npm run format` first)._
 - [Product Spec](docs/PRODUCT_SPEC.md)
 - [Deployment](docs/DEPLOYMENT.md)
 
-
 ## Future Improvements
 
 - Real-time meeting transcription
