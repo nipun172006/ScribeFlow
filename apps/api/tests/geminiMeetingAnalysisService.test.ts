@@ -45,6 +45,19 @@ const validAnalysis = {
 
 const validActionItem = validAnalysis.actionItems[0]!;
 
+type GenerateRequestForTest = {
+  contents: string;
+  config: {
+    httpOptions: { timeout: number };
+    maxOutputTokens?: number;
+    responseSchema?: unknown;
+    thinkingConfig?: {
+      includeThoughts?: boolean;
+      thinkingBudget?: number;
+    };
+  };
+};
+
 async function loadService(geminiKey = "test-gemini-key") {
   vi.resetModules();
   vi.stubEnv("GEMINI_API_KEY", geminiKey);
@@ -218,21 +231,28 @@ describe("GeminiMeetingAnalysisService", () => {
       ],
     });
 
-    const [request] = generateContent.mock.calls[0] as unknown as [
-      { config: { httpOptions: { timeout: number } } },
-    ];
-    expect(request.config.httpOptions.timeout).toBe(120_000);
+    const calls = generateContent.mock.calls as unknown as Array<
+      [GenerateRequestForTest]
+    >;
+    const request = calls[0]?.[0];
+    expect(request).toBeDefined();
+    if (!request) {
+      throw new Error("Gemini request was not captured.");
+    }
+    expect(request.config.httpOptions.timeout).toBe(240_000);
+    expect(request.config.maxOutputTokens).toBe(8192);
+    expect(request.config.thinkingConfig).toEqual({
+      includeThoughts: false,
+      thinkingBudget: 0,
+    });
   });
 
-  it("retries long meeting analysis without response schema when schema-constrained generation fails", async () => {
+  it("starts long meeting analysis without response schema overhead", async () => {
     const { GeminiMeetingAnalysisService } = await loadService();
-    const generateContent = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("provider request failed"))
-      .mockResolvedValueOnce({
-        text: JSON.stringify(validAnalysis),
-        responseId: "json-mode-response",
-      });
+    const generateContent = vi.fn(async () => ({
+      text: JSON.stringify(validAnalysis),
+      responseId: "json-mode-response",
+    }));
     const service = new GeminiMeetingAnalysisService(() => ({
       models: { generateContent },
     }));
@@ -267,16 +287,20 @@ describe("GeminiMeetingAnalysisService", () => {
     });
 
     expect(result.responseId).toBe("json-mode-response");
-    expect(generateContent).toHaveBeenCalledTimes(2);
+    expect(generateContent).toHaveBeenCalledTimes(1);
 
-    const firstRequest = generateContent.mock.calls[0]?.[0] as {
-      config: { responseSchema?: unknown };
-    };
-    const secondRequest = generateContent.mock.calls[1]?.[0] as {
-      config: { responseSchema?: unknown };
-    };
-    expect(firstRequest.config.responseSchema).toBeDefined();
-    expect(secondRequest.config.responseSchema).toBeUndefined();
+    const calls = generateContent.mock.calls as unknown as Array<
+      [GenerateRequestForTest]
+    >;
+    const request = calls[0]?.[0];
+    expect(request).toBeDefined();
+    if (!request) {
+      throw new Error("Gemini request was not captured.");
+    }
+    expect(request.config.responseSchema).toBeUndefined();
+    expect(String(request.contents)).toContain(
+      "For long transcripts, prioritize the strongest evidence-backed items",
+    );
   });
 
   it("rejects unknown evidence segment IDs", async () => {
@@ -298,21 +322,63 @@ describe("GeminiMeetingAnalysisService", () => {
     ).toThrow("unknown transcript segment IDs");
   });
 
-  it("repairs close but invalid Gemini output with one schema retry", async () => {
-    const { GeminiMeetingAnalysisService } = await loadService();
-    const generateContent = vi
-      .fn()
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          ...validAnalysis,
-          actionItems: [{ ...validActionItem, ownerName: "" }],
+  it("normalizes common Gemini JSON drift before validating analysis output", async () => {
+    const { parseAndValidateGeminiAnalysis } = await loadService();
+
+    const parsed = parseAndValidateGeminiAnalysis(
+      [
+        "```json",
+        JSON.stringify({
+          attendees: [" Priya "],
+          executiveOverview: " The team reviewed launch readiness. ",
+          keyDecisions: [
+            {
+              decision: "The launch date stays unchanged.",
+              evidenceSegmentIds: [segmentId, "1000"],
+            },
+          ],
+          discussionPoints: [{ point: "Support handoff was discussed." }],
+          openQuestions: [{ question: "Does support need a checklist?" }],
+          nextSteps: [{ step: "Send the readiness note." }],
+          topics: [{ label: "launch readiness" }],
+          actionItems: [
+            {
+              action: "Send the readiness note.",
+              ownerName: "",
+              deadlineText: "",
+              confidence: "0.7",
+              evidenceSegmentIds: [secondSegmentId, "not-a-segment"],
+            },
+          ],
         }),
-        responseId: "initial-response",
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify(validAnalysis),
-        responseId: "repair-response",
-      });
+        "```",
+      ].join("\n"),
+      [segmentId, secondSegmentId],
+    );
+
+    expect(parsed.keyDecisions[0]).toEqual({
+      text: "The launch date stays unchanged.",
+      evidenceSegmentIds: [segmentId],
+    });
+    expect(parsed.actionItems[0]).toEqual({
+      task: "Send the readiness note.",
+      ownerName: null,
+      deadlineText: null,
+      confidence: 0.7,
+      evidenceSegmentIds: [secondSegmentId],
+    });
+    expect(parsed.topics).toEqual(["launch readiness"]);
+  });
+
+  it("normalizes close but invalid Gemini output without a repair retry", async () => {
+    const { GeminiMeetingAnalysisService } = await loadService();
+    const generateContent = vi.fn().mockResolvedValueOnce({
+      text: JSON.stringify({
+        ...validAnalysis,
+        actionItems: [{ ...validActionItem, ownerName: "" }],
+      }),
+      responseId: "initial-response",
+    });
     const service = new GeminiMeetingAnalysisService(() => ({
       models: {
         generateContent,
@@ -341,12 +407,9 @@ describe("GeminiMeetingAnalysisService", () => {
       ],
     });
 
-    expect(result.responseId).toBe("repair-response");
+    expect(result.responseId).toBe("initial-response");
     expect(result.analysis.actionItems[0]?.ownerName).toBeNull();
-    expect(generateContent).toHaveBeenCalledTimes(2);
-    expect(String(generateContent.mock.calls[1]?.[0].contents)).toContain(
-      "repairing a Gemini meeting-analysis JSON response",
-    );
+    expect(generateContent).toHaveBeenCalledTimes(1);
   });
 
   it("rejects invalid Gemini output after repair instead of returning a fallback", async () => {

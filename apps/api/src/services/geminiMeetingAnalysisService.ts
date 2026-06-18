@@ -45,6 +45,11 @@ type GeminiAnalysisClient = {
       config: {
         responseMimeType: "application/json";
         responseSchema?: Schema;
+        maxOutputTokens?: number;
+        thinkingConfig?: {
+          includeThoughts?: boolean;
+          thinkingBudget?: number;
+        };
         temperature: number;
         httpOptions: {
           timeout: number;
@@ -67,7 +72,10 @@ const maxPromptTranscriptChars = 160_000;
 const maxModelOutputPreviewChars = 3_000;
 const maxRepairOutputChars = 120_000;
 const longMeetingSegmentThreshold = 200;
-const longMeetingAnalysisTimeoutMs = 120_000;
+const longMeetingAnalysisTimeoutMs = 240_000;
+const standardAnalysisOutputTokens = 8_192;
+const longMeetingAnalysisOutputTokens = 8_192;
+const transientGeminiRetryDelaysMs = [0, 1_000, 2_500];
 
 const evidenceSegmentIdsSchema: Schema = {
   type: Type.ARRAY,
@@ -283,6 +291,249 @@ const getAnalysisTimeoutMs = (prompt: PreparedGeminiPrompt) =>
 const isLongMeetingPrompt = (prompt: PreparedGeminiPrompt) =>
   prompt.totalSegmentCount >= longMeetingSegmentThreshold;
 
+const getAnalysisOutputTokens = (prompt: PreparedGeminiPrompt) =>
+  isLongMeetingPrompt(prompt)
+    ? longMeetingAnalysisOutputTokens
+    : standardAnalysisOutputTokens;
+
+const supportsThinkingConfig = () => /\bgemini-(?:2\.5|3)\b/i.test(env.GEMINI_MODEL);
+
+const getThinkingConfig = () =>
+  supportsThinkingConfig()
+    ? {
+        includeThoughts: false,
+        thinkingBudget: 0,
+      }
+    : undefined;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const normalizeJsonPayload = (text: string) => {
+  let value = text.trim();
+  const fencedMatch = value.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+
+  if (fencedMatch?.[1]) {
+    value = fencedMatch[1].trim();
+  }
+
+  const firstObjectChar = value.indexOf("{");
+  const lastObjectChar = value.lastIndexOf("}");
+
+  if (firstObjectChar > 0 && lastObjectChar > firstObjectChar) {
+    value = value.slice(firstObjectChar, lastObjectChar + 1);
+  }
+
+  return value;
+};
+
+const getFirstTextValue = (
+  value: Record<string, unknown>,
+  keys: string[],
+): string | null => {
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  }
+
+  return null;
+};
+
+const toStringArray = (value: unknown) =>
+  Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+
+const normalizeEvidenceSegmentIds = (value: unknown, allowedSegmentIds: Set<string>) =>
+  toStringArray(value).filter((segmentId) => allowedSegmentIds.has(segmentId));
+
+const getEvidenceSegmentIds = (
+  value: Record<string, unknown>,
+  allowedSegmentIds: Set<string>,
+) => {
+  for (const key of [
+    "evidenceSegmentIds",
+    "evidenceSegmentIDs",
+    "evidenceIds",
+    "sourceSegmentIds",
+    "sourceSegments",
+  ]) {
+    const normalized = normalizeEvidenceSegmentIds(value[key], allowedSegmentIds);
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+
+  return [];
+};
+
+const normalizeTextEvidenceItems = (
+  value: unknown,
+  textKeys: string[],
+  allowedSegmentIds: Set<string>,
+  maxItems: number,
+) =>
+  (Array.isArray(value) ? value : [])
+    .map((item) => {
+      if (typeof item === "string") {
+        const text = item.trim();
+        return text ? { text, evidenceSegmentIds: [] } : null;
+      }
+
+      if (!isRecord(item)) {
+        return null;
+      }
+
+      const text = getFirstTextValue(item, textKeys);
+      return text
+        ? {
+            text,
+            evidenceSegmentIds: getEvidenceSegmentIds(item, allowedSegmentIds),
+          }
+        : null;
+    })
+    .filter(
+      (
+        item,
+      ): item is {
+        text: string;
+        evidenceSegmentIds: string[];
+      } => Boolean(item),
+    )
+    .slice(0, maxItems);
+
+const normalizeTopicItems = (value: unknown, maxItems: number) =>
+  (Array.isArray(value) ? value : [])
+    .map((item) => {
+      if (typeof item === "string") {
+        return item.trim();
+      }
+
+      if (isRecord(item)) {
+        return getFirstTextValue(item, ["label", "name", "topic", "text"]);
+      }
+
+      return null;
+    })
+    .filter((item): item is string => Boolean(item))
+    .slice(0, maxItems);
+
+const normalizeNullableText = (value: unknown) => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+};
+
+const normalizeConfidence = (value: unknown) => {
+  const confidence =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number.parseFloat(value)
+        : Number.NaN;
+
+  if (!Number.isFinite(confidence)) {
+    return 0.5;
+  }
+
+  return Math.min(1, Math.max(0, confidence));
+};
+
+const normalizeActionItems = (
+  value: unknown,
+  allowedSegmentIds: Set<string>,
+  maxItems: number,
+) =>
+  (Array.isArray(value) ? value : [])
+    .map((item) => {
+      if (!isRecord(item)) {
+        return null;
+      }
+
+      const task = getFirstTextValue(item, [
+        "task",
+        "text",
+        "action",
+        "nextStep",
+        "description",
+      ]);
+
+      return task
+        ? {
+            task,
+            ownerName: normalizeNullableText(item.ownerName ?? item.owner),
+            deadlineText: normalizeNullableText(item.deadlineText ?? item.deadline),
+            confidence: normalizeConfidence(item.confidence),
+            evidenceSegmentIds: getEvidenceSegmentIds(item, allowedSegmentIds),
+          }
+        : null;
+    })
+    .filter(
+      (
+        item,
+      ): item is {
+        task: string;
+        ownerName: string | null;
+        deadlineText: string | null;
+        confidence: number;
+        evidenceSegmentIds: string[];
+      } => Boolean(item),
+    )
+    .slice(0, maxItems);
+
+function normalizeStructuredAnalysisCandidate(
+  value: unknown,
+  allowedSegmentIds: Iterable<string>,
+) {
+  const candidate = isRecord(value) ? value : {};
+  const allowed = new Set(allowedSegmentIds);
+
+  return {
+    attendees: toStringArray(candidate.attendees).slice(0, 30),
+    executiveOverview:
+      typeof candidate.executiveOverview === "string"
+        ? candidate.executiveOverview.trim()
+        : "",
+    keyDecisions: normalizeTextEvidenceItems(
+      candidate.keyDecisions,
+      ["text", "decision", "summary", "description"],
+      allowed,
+      6,
+    ),
+    discussionPoints: normalizeTextEvidenceItems(
+      candidate.discussionPoints,
+      ["text", "point", "topic", "summary", "description"],
+      allowed,
+      8,
+    ),
+    openQuestions: normalizeTextEvidenceItems(
+      candidate.openQuestions,
+      ["text", "question", "summary", "description"],
+      allowed,
+      6,
+    ),
+    nextSteps: normalizeTextEvidenceItems(
+      candidate.nextSteps,
+      ["text", "step", "task", "action", "summary", "description"],
+      allowed,
+      8,
+    ),
+    topics: normalizeTopicItems(candidate.topics, 8),
+    actionItems: normalizeActionItems(candidate.actionItems, allowed, 8),
+  };
+}
+
 export function prepareGeminiAnalysisPrompt(
   input: GeminiMeetingAnalysisInput,
 ): PreparedGeminiPrompt {
@@ -343,7 +594,10 @@ export function prepareGeminiAnalysisPrompt(
     "Do not invent deadlines. If no deadline is explicit, set deadlineText to null.",
     "Keep unresolved questions in openQuestions.",
     "Attach only real evidenceSegmentIds from the supplied transcript segment IDs.",
+    "Each evidenceSegmentIds value must exactly match a transcript segment id. Never use numeric startMs values as evidence IDs.",
     "Return only schema-conforming JSON.",
+    "Keep the JSON concise: executiveOverview <= 160 words, max 6 keyDecisions, max 8 discussionPoints, max 6 openQuestions, max 8 nextSteps, max 8 topics, and max 8 actionItems.",
+    "For long transcripts, prioritize the strongest evidence-backed items instead of trying to exhaustively summarize every segment.",
     "The transcript payload is compact: each segment has id, speaker, startMs and text.",
     "If transcriptWasTruncated is true, analyse only the included transcript segments and do not infer from omitted content.",
     "",
@@ -398,7 +652,7 @@ function parseGeminiJson(text: string | undefined) {
   }
 
   try {
-    return JSON.parse(text) as unknown;
+    return JSON.parse(normalizeJsonPayload(text)) as unknown;
   } catch (error) {
     throw ApiError.geminiInvalidResponse(
       "Gemini returned meeting-analysis output that was not valid JSON.",
@@ -456,13 +710,33 @@ export function parseAndValidateGeminiAnalysis(
   allowedSegmentIds: Iterable<string>,
 ) {
   const parsed = parseGeminiJson(text);
-  const analysis = structuredMeetingAnalysisSchema.safeParse(parsed);
+  const normalized = normalizeStructuredAnalysisCandidate(parsed, allowedSegmentIds);
+  const analysis = structuredMeetingAnalysisSchema.safeParse(normalized);
 
   if (!analysis.success) {
     throw ApiError.meetingAnalysisOutputInvalid(
       "Gemini returned meeting-analysis output that did not match the required schema.",
       {
         issues: summarizeValidationIssues(analysis.error.issues),
+      },
+    );
+  }
+
+  const hasMeaningfulContent =
+    analysis.data.executiveOverview.trim().length > 0 ||
+    analysis.data.attendees.length > 0 ||
+    analysis.data.keyDecisions.length > 0 ||
+    analysis.data.discussionPoints.length > 0 ||
+    analysis.data.openQuestions.length > 0 ||
+    analysis.data.nextSteps.length > 0 ||
+    analysis.data.topics.length > 0 ||
+    analysis.data.actionItems.length > 0;
+
+  if (!hasMeaningfulContent) {
+    throw ApiError.meetingAnalysisOutputInvalid(
+      "Gemini returned an empty meeting analysis.",
+      {
+        reason: "empty_analysis",
       },
     );
   }
@@ -478,14 +752,32 @@ function mapGeminiError(error: unknown): ApiError {
 
   const candidate = error as {
     status?: unknown;
+    statusCode?: unknown;
     code?: unknown;
     name?: unknown;
     message?: unknown;
+    cause?: unknown;
   };
-  const status = typeof candidate.status === "number" ? candidate.status : null;
+  const status =
+    typeof candidate.status === "number"
+      ? candidate.status
+      : typeof candidate.statusCode === "number"
+        ? candidate.statusCode
+        : null;
   const code = typeof candidate.code === "number" ? candidate.code : null;
   const name = typeof candidate.name === "string" ? candidate.name : "";
-  const message = typeof candidate.message === "string" ? candidate.message : "";
+  const cause =
+    candidate.cause instanceof Error
+      ? `${candidate.cause.name} ${candidate.cause.message}`
+      : typeof candidate.cause === "string"
+        ? candidate.cause
+        : "";
+  const message = [
+    typeof candidate.message === "string" ? candidate.message : "",
+    cause,
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
 
   if (status === 401 || status === 403 || code === 401 || code === 403) {
     return ApiError.geminiAuthFailed();
@@ -495,10 +787,18 @@ function mapGeminiError(error: unknown): ApiError {
     return ApiError.geminiRateLimited();
   }
 
+  if (status === 408 || status === 504 || code === 408 || code === 504) {
+    return ApiError.geminiRequestTimeout();
+  }
+
   if (
     name === "AbortError" ||
     name === "TimeoutError" ||
-    message.toLocaleLowerCase().includes("timeout")
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("abort") ||
+    message.includes("aborted") ||
+    message.includes("deadline")
   ) {
     return ApiError.geminiRequestTimeout();
   }
@@ -506,14 +806,87 @@ function mapGeminiError(error: unknown): ApiError {
   return ApiError.geminiRequestFailed();
 }
 
+const getRawGeminiStatus = (error: unknown) => {
+  const candidate = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    code?: unknown;
+  };
+
+  if (typeof candidate.status === "number") {
+    return candidate.status;
+  }
+
+  if (typeof candidate.statusCode === "number") {
+    return candidate.statusCode;
+  }
+
+  if (typeof candidate.code === "number") {
+    return candidate.code;
+  }
+
+  return null;
+};
+
+const getRawGeminiMessage = (error: unknown) => {
+  const candidate = error as {
+    name?: unknown;
+    message?: unknown;
+    cause?: unknown;
+  };
+  const cause =
+    candidate.cause instanceof Error
+      ? `${candidate.cause.name} ${candidate.cause.message}`
+      : typeof candidate.cause === "string"
+        ? candidate.cause
+        : "";
+
+  return [
+    typeof candidate.name === "string" ? candidate.name : "",
+    typeof candidate.message === "string" ? candidate.message : "",
+    cause,
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
+};
+
+const isTransientGeminiError = (error: unknown) => {
+  const status = getRawGeminiStatus(error);
+  const message = getRawGeminiMessage(error);
+
+  return (
+    status === 408 ||
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("abort") ||
+    message.includes("aborted") ||
+    message.includes("deadline") ||
+    message.includes("high demand") ||
+    message.includes("unavailable")
+  );
+};
+
+const sleep = (delayMs: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+
 async function generateGeminiContent(input: {
   client: GeminiAnalysisClient;
   contents: string;
   temperature: number;
   timeoutMs: number;
+  maxOutputTokens: number;
   useResponseSchema: boolean;
 }) {
-  return input.client.models.generateContent({
+  const thinkingConfig = getThinkingConfig();
+
+  const request: Parameters<GeminiAnalysisClient["models"]["generateContent"]>[0] = {
     model: env.GEMINI_MODEL,
     contents: input.contents,
     config: {
@@ -521,12 +894,38 @@ async function generateGeminiContent(input: {
       ...(input.useResponseSchema
         ? { responseSchema: geminiMeetingAnalysisResponseSchema }
         : {}),
+      maxOutputTokens: input.maxOutputTokens,
+      ...(thinkingConfig ? { thinkingConfig } : {}),
       temperature: input.temperature,
       httpOptions: {
         timeout: input.timeoutMs,
       },
     },
-  });
+  };
+
+  for (let attempt = 0; attempt <= transientGeminiRetryDelaysMs.length; attempt += 1) {
+    try {
+      return await input.client.models.generateContent(request);
+    } catch (error) {
+      const isLastAttempt = attempt === transientGeminiRetryDelaysMs.length;
+      if (!isTransientGeminiError(error) || isLastAttempt) {
+        throw error;
+      }
+
+      logger.warn(
+        {
+          attempt: attempt + 1,
+          retryDelayMs: transientGeminiRetryDelaysMs[attempt],
+          status: getRawGeminiStatus(error),
+        },
+        "gemini request hit a transient provider error; retrying",
+      );
+
+      await sleep(transientGeminiRetryDelaysMs[attempt] ?? 0);
+    }
+  }
+
+  throw ApiError.geminiRequestFailed();
 }
 
 async function generateGeminiContentWithLongMeetingFallback(input: {
@@ -535,19 +934,30 @@ async function generateGeminiContentWithLongMeetingFallback(input: {
   contents: string;
   temperature: number;
   timeoutMs: number;
+  maxOutputTokens: number;
   purpose: "analysis" | "repair";
 }) {
+  const shouldUseResponseSchema =
+    input.purpose === "repair" || !isLongMeetingPrompt(input.prompt);
+
   try {
     return await generateGeminiContent({
       client: input.client,
       contents: input.contents,
       temperature: input.temperature,
       timeoutMs: input.timeoutMs,
-      useResponseSchema: true,
+      maxOutputTokens: input.maxOutputTokens,
+      useResponseSchema: shouldUseResponseSchema,
     });
   } catch (error) {
     const mapped = mapGeminiError(error);
-    if (mapped.code !== "GEMINI_REQUEST_FAILED" || !isLongMeetingPrompt(input.prompt)) {
+    const canRetryWithoutSchema =
+      shouldUseResponseSchema &&
+      isLongMeetingPrompt(input.prompt) &&
+      (mapped.code === "GEMINI_REQUEST_FAILED" ||
+        mapped.code === "GEMINI_REQUEST_TIMEOUT");
+
+    if (!canRetryWithoutSchema) {
       throw mapped;
     }
 
@@ -567,6 +977,7 @@ async function generateGeminiContentWithLongMeetingFallback(input: {
         contents: input.contents,
         temperature: input.temperature,
         timeoutMs: input.timeoutMs,
+        maxOutputTokens: input.maxOutputTokens,
         useResponseSchema: false,
       });
     } catch (retryError) {
@@ -627,6 +1038,7 @@ export class GeminiMeetingAnalysisService implements MeetingAnalysisService {
 
     const client = this.getClient();
     const timeoutMs = getAnalysisTimeoutMs(prompt);
+    const maxOutputTokens = getAnalysisOutputTokens(prompt);
 
     try {
       const response = await generateGeminiContentWithLongMeetingFallback({
@@ -635,6 +1047,7 @@ export class GeminiMeetingAnalysisService implements MeetingAnalysisService {
         contents: prompt.contents,
         temperature: 0.1,
         timeoutMs,
+        maxOutputTokens,
         purpose: "analysis",
       });
       let analysis: StructuredMeetingAnalysis;
@@ -671,6 +1084,7 @@ export class GeminiMeetingAnalysisService implements MeetingAnalysisService {
           contents: repairContents,
           temperature: 0,
           timeoutMs,
+          maxOutputTokens,
           purpose: "repair",
         });
 
