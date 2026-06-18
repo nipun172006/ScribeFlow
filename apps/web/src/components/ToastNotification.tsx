@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect } from "react";
 import { CheckCircle2, XCircle, Info, X } from "lucide-react";
 import { cx } from "../lib/classNames";
 
@@ -90,31 +90,4 @@ export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
       ))}
     </div>
   );
-}
-
-/**
- * useToast
- *
- * Hook to manage toast state. Returns the toast list and a function to add toasts.
- *
- * Usage:
- *   const { toasts, addToast, dismissToast } = useToast();
- *   addToast({ message: "Saved!", variant: "success" });
- */
-export function useToast() {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const addToast = useCallback(
-    ({ message, variant }: { message: string; variant: ToastVariant }) => {
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      setToasts((prev) => [...prev, { id, message, variant }]);
-    },
-    [],
-  );
-
-  const dismissToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  return { toasts, addToast, dismissToast };
 }
