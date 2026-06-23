@@ -2,6 +2,8 @@ import type {
   ActionItem,
   AnalyzeMeetingResponse,
   ApiErrorResponse,
+  CrossMeetingAnalytics,
+  MeetingAnalytics,
   MeetingDetail,
   MeetingListQuery,
   MeetingSpeaker,
@@ -137,6 +139,14 @@ export function listMeetings(query: Partial<MeetingListQuery> = {}) {
 
 export function getMeetingDetail(meetingId: string) {
   return jsonRequest<MeetingDetail>(`/meetings/${meetingId}`);
+}
+
+export function getMeetingAnalytics(meetingId: string) {
+  return jsonRequest<MeetingAnalytics>(`/meetings/${meetingId}/analytics`);
+}
+
+export function getCrossMeetingAnalytics() {
+  return jsonRequest<CrossMeetingAnalytics>("/analytics");
 }
 
 export function transcribeMeeting(meetingId: string) {

@@ -9,6 +9,7 @@ import { AnalyticsPage } from "./AnalyticsPage";
 const apiClient = vi.hoisted(() => ({
   listMeetings: vi.fn(),
   getMeetingDetail: vi.fn(),
+  getCrossMeetingAnalytics: vi.fn(),
 }));
 
 vi.mock("../lib/apiClient", async (importOriginal) => {
@@ -159,10 +160,20 @@ describe("Dashboard and Analytics pages", () => {
     expect(screen.getByText("(5)")).toBeInTheDocument();
   });
 
-  it("analytics shows empty state when no completed meetings exist", async () => {
-    apiClient.listMeetings.mockResolvedValue({
-      items: [],
-      pagination: { page: 1, pageSize: 50, totalItems: 0, totalPages: 0 },
+  it("analytics shows empty state when there are no meetings", async () => {
+    apiClient.getCrossMeetingAnalytics.mockResolvedValue({
+      totals: {
+        meetingCount: 0,
+        completedMeetingCount: 0,
+        actionItemCount: 0,
+        completedActionItemCount: 0,
+        completionRate: 0,
+        totalSpeakingSeconds: 0,
+      },
+      meetingFrequency: [],
+      topRecurringTopics: [],
+      speakerParticipation: [],
+      actionItemCompletion: [],
     });
 
     renderWithProviders(
@@ -171,64 +182,26 @@ describe("Dashboard and Analytics pages", () => {
       </MemoryRouter>,
     );
 
-    expect(
-      await screen.findByText("No meeting records available."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("No speaker analytics")).toBeInTheDocument();
-    expect(screen.getByText("No action-item analytics")).toBeInTheDocument();
-    expect(screen.getByText("No recurring topics")).toBeInTheDocument();
+    expect(await screen.findByText("No analytics yet")).toBeInTheDocument();
   });
 
-  it("analytics renders speaking/action/topic sections from mocked data", async () => {
-    apiClient.listMeetings.mockResolvedValue({
-      items: [makeMeeting(meetingId1)],
-      pagination: { page: 1, pageSize: 50, totalItems: 1, totalPages: 1 },
+  it("analytics renders headline, completion and topic sections from the endpoint", async () => {
+    apiClient.getCrossMeetingAnalytics.mockResolvedValue({
+      totals: {
+        meetingCount: 1,
+        completedMeetingCount: 1,
+        actionItemCount: 1,
+        completedActionItemCount: 0,
+        completionRate: 0,
+        totalSpeakingSeconds: 120,
+      },
+      meetingFrequency: [{ date: "2026-06-11", value: 1 }],
+      topRecurringTopics: [{ topic: "Marketing", count: 3 }],
+      speakerParticipation: [{ displayName: "Alice", totalSpeakingSeconds: 120 }],
+      actionItemCompletion: [
+        { date: "2026-06-11", openCount: 1, completedCount: 0, completionRate: 0 },
+      ],
     });
-
-    apiClient.getMeetingDetail.mockResolvedValue({
-      meeting: makeMeeting(meetingId1),
-      speakers: [
-        {
-          id: "speaker-1",
-          meetingId: meetingId1,
-          rawSpeakerIndex: 0,
-          displayName: "Alice",
-          totalSpeakingSeconds: 120, // 2 minutes
-          speakingPercentage: 100,
-        },
-      ],
-      transcriptSegments: [],
-      summary: null,
-      actionItems: [
-        {
-          id: "action-1",
-          meetingId: meetingId1,
-          task: "Task 1",
-          ownerName: null,
-          ownerSpeakerId: null,
-          deadline: null,
-          deadlineText: null,
-          status: "open",
-          confidence: null,
-          sourceSegmentId: null,
-          sourceStartMs: null,
-          sourceEndMs: null,
-          evidenceText: null,
-          evidenceSegmentIds: [],
-        },
-      ],
-      topics: [
-        {
-          id: "topic-1",
-          meetingId: meetingId1,
-          normalizedLabel: "marketing",
-          displayLabel: "Marketing",
-          confidence: 0.9,
-          mentionCount: 3,
-        },
-      ],
-      chunkCount: 10,
-    } as MeetingDetail);
 
     renderWithProviders(
       <MemoryRouter>
@@ -236,15 +209,12 @@ describe("Dashboard and Analytics pages", () => {
       </MemoryRouter>,
     );
 
-    // Wait for the components to render the topic
+    // Topic chip with its mention count.
     expect(await screen.findByText("Marketing")).toBeInTheDocument();
-
-    // Action items
-    expect(screen.getByText("0%")).toBeInTheDocument();
-    expect(screen.getAllByText("1")[0]).toBeInTheDocument(); // Open
-    expect(screen.getAllByText("0")[0]).toBeInTheDocument(); // Completed
-
-    // Topics
     expect(screen.getByText("(3)")).toBeInTheDocument();
+
+    // Completion headline metric.
+    expect(screen.getByText("0%")).toBeInTheDocument();
+    expect(screen.getByText("Action-item completion")).toBeInTheDocument();
   });
 });

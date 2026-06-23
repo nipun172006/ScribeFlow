@@ -60,6 +60,27 @@ async function tryRemoveObject(
   }
 }
 
+/**
+ * Ensures a completed meeting has its transcript and analysis chunked and
+ * embedded for semantic search. This advances the pipeline's final
+ * "indexing" stage so search works for meetings created through the UI.
+ *
+ * Indexing is idempotent (skips when chunks already exist) and intentionally
+ * does not run when the meeting is not yet completed or already indexed.
+ */
+async function ensureMeetingIndexed(
+  dependencies: ApiDependencies,
+  meetingId: string,
+): Promise<void> {
+  const detail = await dependencies.getMeetingRepository().getMeetingDetail(meetingId);
+
+  if (!detail || detail.meeting.status !== "completed" || detail.chunkCount > 0) {
+    return;
+  }
+
+  await dependencies.getMeetingIndexingService().indexMeeting(detail);
+}
+
 export function createMeetingRoutes(dependencies: ApiDependencies) {
   const router = Router();
 
@@ -410,6 +431,20 @@ export function createMeetingRoutes(dependencies: ApiDependencies) {
         );
 
         if (existingAnalysis) {
+          // Backfill semantic-search chunks for meetings that were analysed
+          // before auto-indexing existed. Fire-and-forget so re-opening a
+          // completed meeting stays fast.
+          if (detail.meeting.status === "completed" && detail.chunkCount === 0) {
+            void ensureMeetingIndexed(dependencies, detail.meeting.id).catch(
+              (error) => {
+                logger.warn(
+                  { err: error, meetingId: detail.meeting.id },
+                  "background re-indexing of analysed meeting failed",
+                );
+              },
+            );
+          }
+
           res.json(existingAnalysis);
           return;
         }
@@ -452,6 +487,18 @@ export function createMeetingRoutes(dependencies: ApiDependencies) {
             meetingId: detail.meeting.id,
             result: analysisResult,
           });
+
+          // Advance the pipeline's final stage: chunk + embed for semantic
+          // search. Failures here must not fail analysis (indexing is
+          // idempotent and can be retried), so they are logged, not thrown.
+          try {
+            await ensureMeetingIndexed(dependencies, detail.meeting.id);
+          } catch (indexError) {
+            logger.warn(
+              { err: indexError, meetingId: detail.meeting.id },
+              "automatic indexing after analysis failed",
+            );
+          }
 
           res.json(response);
         } catch (error) {
@@ -520,6 +567,27 @@ export function createMeetingRoutes(dependencies: ApiDependencies) {
         });
 
         res.json({ speaker });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.get(
+    "/meetings/:meetingId/analytics",
+    validateRequest({ params: meetingIdParamsSchema }),
+    async (_req, res, next) => {
+      try {
+        const params = res.locals.params as { meetingId: string };
+        const analytics = await dependencies
+          .getMeetingRepository()
+          .getMeetingAnalytics(params.meetingId);
+
+        if (!analytics) {
+          throw ApiError.meetingNotFound();
+        }
+
+        res.json(analytics);
       } catch (error) {
         next(error);
       }

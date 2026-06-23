@@ -20,6 +20,20 @@ const apiClient = vi.hoisted(() => ({
   analyzeMeeting: vi.fn(),
   renameSpeaker: vi.fn(),
   updateActionItemStatus: vi.fn(),
+  getCrossMeetingAnalytics: vi.fn(async () => ({
+    totals: {
+      meetingCount: 0,
+      completedMeetingCount: 0,
+      actionItemCount: 0,
+      completedActionItemCount: 0,
+      completionRate: 0,
+      totalSpeakingSeconds: 0,
+    },
+    meetingFrequency: [],
+    topRecurringTopics: [],
+    speakerParticipation: [],
+    actionItemCompletion: [],
+  })),
 }));
 
 const tusClient = vi.hoisted(() => ({

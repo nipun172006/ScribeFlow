@@ -1,6 +1,7 @@
 import type {
   ActionItem,
   AnalyzeMeetingResponse,
+  CrossMeetingAnalytics,
   Meeting,
   MeetingAnalytics,
   MeetingDetail,
@@ -127,6 +128,7 @@ export interface MeetingRepository {
     status: UpdateActionItemInput["status"];
   }): Promise<ActionItem>;
   getMeetingAnalytics(meetingId: string): Promise<MeetingAnalytics | null>;
+  getCrossMeetingAnalytics(): Promise<CrossMeetingAnalytics>;
 }
 
 export interface StorageService {

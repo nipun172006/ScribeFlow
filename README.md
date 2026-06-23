@@ -39,14 +39,15 @@ moment it was said.
 
 ## Features
 
-| Capability                      | Description                                                                                      |
-| ------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Audio Uploads**               | Secure, resumable [TUS](https://tus.io/) uploads directly to Supabase private storage.           |
-| **Transcription & Diarisation** | High-accuracy speech-to-text with speaker separation via **Deepgram Nova-3**.                    |
-| **Structured Analysis**         | **Google Gemini** extracts JSON-structured summaries, key decisions, and action items.           |
-| **Evidence Linking**            | Every action item and summary point links back to the exact transcript segment and timestamp.    |
-| **Semantic RAG Search**         | Transcript + analysis chunking and Gemini embeddings stored in `pgvector` for similarity search. |
-| **Analytics**                   | Cross-meeting metrics, speaking-time distribution, and dynamic topic tracking.                   |
+| Capability                      | Description                                                                                                                |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Audio Uploads**               | Secure, resumable [TUS](https://tus.io/) uploads directly to Supabase private storage.                                     |
+| **Transcription & Diarisation** | High-accuracy speech-to-text with speaker separation via **Deepgram Nova-3**.                                              |
+| **Structured Analysis**         | **Google Gemini** extracts JSON-structured summaries, key decisions, and action items.                                     |
+| **Evidence Linking**            | Every action item and summary point links back to the exact transcript segment and timestamp.                              |
+| **Semantic RAG Search**         | Transcript + analysis chunking and Gemini embeddings stored in `pgvector`, auto-indexed after analysis.                    |
+| **Analytics**                   | Deterministic cross-meeting endpoint: meeting frequency, speaking time, action-item completion trend and recurring topics. |
+| **Export & sharing**            | Copy/export a meeting summary to Markdown and download the transcript as TXT, SRT or VTT.                                  |
 
 ## Tech Stack
 
@@ -248,10 +249,30 @@ secret handling, validation expectations).
 - [Demo Script](docs/DEMO_SCRIPT.md)
 - [Viva Notes](docs/VIVA_NOTES.md)
 
+## Success Metrics
+
+How ScribeFlow demonstrates each assignment success metric:
+
+| Assignment metric                         | How it is measured                                                                                                                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Transcription WER < 10% on clear audio    | `npm run verify:deepgram` computes WER against a reference transcript (`evaluateWer.mjs`); average word confidence is surfaced on the meeting detail page as a quality proxy. |
+| Diarisation separates ≥ 3 speakers        | Deepgram diarisation persists `meeting_speakers`; the detail analytics tab flags meetings where fewer than 3 speakers were separated.                                         |
+| Action-item extraction captures all tasks | Gemini structured output extracts task / owner / deadline with transcript evidence; verify with `npm run verify:gemini:persist`.                                              |
+| Semantic search returns relevant results  | Transcript + summary chunks are embedded into `pgvector` and **auto-indexed after analysis**; verify with `npm run verify:rag`.                                               |
+| Summary has all required sections         | Attendees, key decisions, discussion points, open questions and next steps are enforced by the analysis schema and rendered on the overview tab.                              |
+
 ## Roadmap
 
-- Real-time meeting transcription
-- Calendar integration
-- Multi-language support
+### Recently shipped
+
+- Automatic semantic indexing as the final pipeline stage (search now works for every analysed meeting).
+- Deterministic cross-meeting analytics endpoint: frequency, speaking time, completion trend and recurring topics.
+- Summary → Markdown export and transcript download (TXT / SRT / VTT).
+- App-wide toast feedback, route-level code splitting, and a top-level error boundary.
+
+### Planned
+
+- Real-time (streaming) live transcription
+- Multi-language transcription tuning
 - Meeting export to PDF
-- AI-generated meeting insights dashboard
+- Calendar / action-item reminders

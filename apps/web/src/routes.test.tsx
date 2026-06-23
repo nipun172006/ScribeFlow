@@ -13,11 +13,11 @@ function renderRoute(path: string) {
 }
 
 describe("ScribeFlow routes", () => {
-  it("renders the dashboard at the root route", () => {
+  it("renders the dashboard at the root route", async () => {
     renderRoute("/");
 
     expect(
-      screen.getByRole("heading", {
+      await screen.findByRole("heading", {
         name: /meeting intelligence, ready for every recording/i,
       }),
     ).toBeInTheDocument();
@@ -26,11 +26,11 @@ describe("ScribeFlow routes", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("renders a designed not-found state for unknown routes", () => {
+  it("renders a designed not-found state for unknown routes", async () => {
     renderRoute("/missing-route");
 
     expect(
-      screen.getByRole("heading", { name: /page not found/i }),
+      await screen.findByRole("heading", { name: /page not found/i }),
     ).toBeInTheDocument();
   });
 });

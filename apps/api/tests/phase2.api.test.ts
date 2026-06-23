@@ -326,11 +326,29 @@ function makeRepository(overrides: Partial<MeetingRepository> = {}) {
       updatedAt: now,
     })),
     getMeetingAnalytics: vi.fn(async () => null),
+    getCrossMeetingAnalytics: vi.fn(async () => ({
+      totals: {
+        meetingCount: 0,
+        completedMeetingCount: 0,
+        actionItemCount: 0,
+        completedActionItemCount: 0,
+        completionRate: 0,
+        totalSpeakingSeconds: 0,
+      },
+      meetingFrequency: [],
+      topRecurringTopics: [],
+      speakerParticipation: [],
+      actionItemCompletion: [],
+    })),
     ...overrides,
   };
 
   return repository;
 }
+
+type IndexingServiceDouble = {
+  indexMeeting: ReturnType<typeof vi.fn>;
+};
 
 function makeStorage(overrides: Partial<StorageService> = {}) {
   const storage: StorageService = {
@@ -419,15 +437,19 @@ function createMockedApp(
   storage = makeStorage(),
   transcriptionService = makeTranscriptionService(),
   meetingAnalysisService = makeMeetingAnalysisService(),
+  meetingIndexingService?: IndexingServiceDouble,
 ) {
   const dependencies: ApiDependencies = {
     getMeetingRepository: () => repository,
     getStorageService: () => storage,
     getTranscriptionService: () => transcriptionService,
     getMeetingAnalysisService: () => meetingAnalysisService,
-    getMeetingIndexingService: () => {
-      throw new Error("getMeetingIndexingService not implemented in test");
-    },
+    getMeetingIndexingService: () =>
+      (meetingIndexingService ?? {
+        indexMeeting: () => {
+          throw new Error("getMeetingIndexingService not implemented in test");
+        },
+      }) as unknown as ReturnType<ApiDependencies["getMeetingIndexingService"]>,
     getMeetingSearchService: () => {
       throw new Error("getMeetingSearchService not implemented in test");
     },
@@ -439,6 +461,7 @@ function createMockedApp(
     storage,
     transcriptionService,
     meetingAnalysisService,
+    meetingIndexingService,
   };
 }
 
@@ -949,6 +972,158 @@ describe("Phase 2 persistence API", () => {
         }),
       );
       expect(repository.persistMeetingAnalysis).not.toHaveBeenCalled();
+    });
+  });
+
+  it("indexes the meeting for semantic search after analysis completes", async () => {
+    const indexMeeting = vi.fn(async () => ({
+      meetingId,
+      chunkCount: 4,
+      embeddingDimensions: 768,
+      embeddingModel: "gemini-embedding",
+      indexedAt: now,
+      idempotent: false,
+    }));
+    const completedDetail = makeTranscribedDetail({
+      meeting: makeMeeting({
+        status: "completed",
+        fileSizeBytes: 1000,
+        completedAt: now,
+      }),
+      chunkCount: 0,
+    });
+    const getMeetingDetail = vi.fn();
+    // First fetch (analyze handler) sees a transcribed meeting; the post-persist
+    // re-fetch in ensureMeetingIndexed sees the completed, unindexed meeting.
+    getMeetingDetail.mockResolvedValueOnce(makeTranscribedDetail());
+    getMeetingDetail.mockResolvedValue(completedDetail);
+
+    const repository = makeRepository({ getMeetingDetail });
+    const { app } = createMockedApp(
+      repository,
+      makeStorage(),
+      makeTranscriptionService(),
+      makeMeetingAnalysisService(),
+      { indexMeeting },
+    );
+
+    await withTestServer(app, async (baseUrl) => {
+      await request(baseUrl).post(`/api/meetings/${meetingId}/analyze`).expect(200);
+      expect(indexMeeting).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("does not fail analysis when automatic indexing throws", async () => {
+    const indexMeeting = vi.fn(async () => {
+      throw new Error("embedding provider down");
+    });
+    const completedDetail = makeTranscribedDetail({
+      meeting: makeMeeting({
+        status: "completed",
+        fileSizeBytes: 1000,
+        completedAt: now,
+      }),
+      chunkCount: 0,
+    });
+    const getMeetingDetail = vi.fn();
+    getMeetingDetail.mockResolvedValueOnce(makeTranscribedDetail());
+    getMeetingDetail.mockResolvedValue(completedDetail);
+
+    const repository = makeRepository({ getMeetingDetail });
+    const { app } = createMockedApp(
+      repository,
+      makeStorage(),
+      makeTranscriptionService(),
+      makeMeetingAnalysisService(),
+      { indexMeeting },
+    );
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .post(`/api/meetings/${meetingId}/analyze`)
+        .expect(200);
+
+      expect(response.body.meeting.status).toBe("completed");
+      expect(indexMeeting).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("returns cross-meeting analytics", async () => {
+    const repository = makeRepository({
+      getCrossMeetingAnalytics: vi.fn(async () => ({
+        totals: {
+          meetingCount: 3,
+          completedMeetingCount: 2,
+          actionItemCount: 5,
+          completedActionItemCount: 3,
+          completionRate: 60,
+          totalSpeakingSeconds: 1200,
+        },
+        meetingFrequency: [
+          { date: "2026-06-10", value: 1 },
+          { date: "2026-06-11", value: 2 },
+        ],
+        topRecurringTopics: [{ topic: "Roadmap", count: 4 }],
+        speakerParticipation: [{ displayName: "Priya", totalSpeakingSeconds: 800 }],
+        actionItemCompletion: [
+          { date: "2026-06-11", openCount: 2, completedCount: 3, completionRate: 60 },
+        ],
+      })),
+    });
+    const { app } = createMockedApp(repository);
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await request(baseUrl).get("/api/analytics").expect(200);
+
+      expect(response.body.totals.meetingCount).toBe(3);
+      expect(response.body.totals.completionRate).toBe(60);
+      expect(response.body.topRecurringTopics[0]).toMatchObject({
+        topic: "Roadmap",
+        count: 4,
+      });
+      expect(repository.getCrossMeetingAnalytics).toHaveBeenCalled();
+    });
+  });
+
+  it("returns per-meeting analytics and 404s when absent", async () => {
+    const repository = makeRepository({
+      getMeetingAnalytics: vi.fn(async () => ({
+        durationSeconds: 600,
+        participantCount: 2,
+        speakingBreakdown: [
+          {
+            speakerId,
+            displayName: "Speaker 1",
+            totalSpeakingSeconds: 300,
+            speakingPercentage: 50,
+          },
+        ],
+        actionItemCount: 2,
+        completedActionItemCount: 1,
+        completionRate: 50,
+        topics: [{ topic: "Roadmap", count: 3 }],
+      })),
+    });
+    const { app } = createMockedApp(repository);
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .get(`/api/meetings/${meetingId}/analytics`)
+        .expect(200);
+
+      expect(response.body.participantCount).toBe(2);
+      expect(response.body.completionRate).toBe(50);
+    });
+
+    const missingApp = createMockedApp(
+      makeRepository({ getMeetingAnalytics: vi.fn(async () => null) }),
+    ).app;
+
+    await withTestServer(missingApp, async (baseUrl) => {
+      const response = await request(baseUrl)
+        .get(`/api/meetings/${meetingId}/analytics`)
+        .expect(404);
+      expect(response.body.error.code).toBe("MEETING_NOT_FOUND");
     });
   });
 });

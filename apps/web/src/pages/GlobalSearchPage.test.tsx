@@ -70,7 +70,7 @@ describe("GlobalSearchPage", () => {
       expect(screen.getByText("Test Meeting")).toBeInTheDocument();
     });
 
-    expect(mockSearch).toHaveBeenCalledWith("test query");
+    expect(mockSearch).toHaveBeenCalledWith("test query", 10);
     expect(screen.getByText("This is a test chunk")).toBeInTheDocument();
     expect(screen.getByText("key decision")).toBeInTheDocument();
     expect(screen.getByText("Score: 85.0%")).toBeInTheDocument();

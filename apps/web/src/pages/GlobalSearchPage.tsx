@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ArrowRight, Search, Sparkles } from "lucide-react";
+import { ArrowRight, Plus, Search, Sparkles } from "lucide-react";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
@@ -9,21 +9,42 @@ import { PageHeader } from "../components/PageHeader";
 import { SearchInput } from "../components/SearchInput";
 import { searchMeetings } from "../lib/apiClient";
 
+const INITIAL_LIMIT = 10;
+const MAX_LIMIT = 25;
+const SAMPLE_QUERIES = [
+  "What did we decide about the project scope?",
+  "Action items assigned to the design team",
+  "Open questions from the last sprint review",
+];
+
 export function GlobalSearchPage() {
   const [query, setQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const [limit, setLimit] = useState(INITIAL_LIMIT);
 
   const searchMutation = useMutation({
-    mutationFn: (searchQuery: string) => searchMeetings(searchQuery),
+    mutationFn: (vars: { query: string; limit: number }) =>
+      searchMeetings(vars.query, vars.limit),
   });
 
-  const handleSearch = () => {
-    if (query.trim()) {
-      searchMutation.mutate(query.trim());
+  const runSearch = (nextQuery: string, nextLimit: number) => {
+    const trimmed = nextQuery.trim();
+    if (!trimmed) {
+      return;
     }
+    setSubmittedQuery(trimmed);
+    setLimit(nextLimit);
+    searchMutation.mutate({ query: trimmed, limit: nextLimit });
   };
+
+  const handleSearch = () => runSearch(query, INITIAL_LIMIT);
+  const handleLoadMore = () =>
+    runSearch(submittedQuery, Math.min(limit + INITIAL_LIMIT, MAX_LIMIT));
 
   const hasSearched = searchMutation.data !== undefined;
   const results = searchMutation.data?.results ?? [];
+  const canLoadMore =
+    !searchMutation.isPending && results.length >= limit && limit < MAX_LIMIT;
 
   return (
     <div className="space-y-9">
@@ -41,6 +62,7 @@ export function GlobalSearchPage() {
               value={query}
               onChange={setQuery}
               onSubmit={handleSearch}
+              disabled={searchMutation.isPending}
               placeholder="What did we decide about the project scope?"
             />
           </div>
@@ -54,10 +76,24 @@ export function GlobalSearchPage() {
             Search
           </button>
         </div>
-        <p className="mt-3 flex items-center gap-2 text-sm text-muted">
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted">
           <Sparkles size={16} aria-hidden="true" className="text-accent" />
-          Results cite source meetings, speakers and timestamps.
-        </p>
+          <span>Try:</span>
+          {SAMPLE_QUERIES.map((sample) => (
+            <button
+              key={sample}
+              type="button"
+              onClick={() => {
+                setQuery(sample);
+                runSearch(sample, INITIAL_LIMIT);
+              }}
+              disabled={searchMutation.isPending}
+              className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-primary transition hover:border-accent/60 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {sample}
+            </button>
+          ))}
+        </div>
       </section>
 
       {searchMutation.isPending && <LoadingState label="Searching across meetings" />}
@@ -73,7 +109,7 @@ export function GlobalSearchPage() {
           <EmptyState
             icon={<Search size={20} aria-hidden="true" />}
             title="No results found"
-            message={`No matches found for "${searchMutation.variables}". Try a different query.`}
+            message={`No matches found for "${submittedQuery}". Try a different query.`}
             variant="open"
           />
         )}
@@ -139,6 +175,18 @@ export function GlobalSearchPage() {
               );
             })}
           </div>
+          {canLoadMore ? (
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                className="sf-secondary-button px-4 py-2"
+              >
+                <Plus size={16} aria-hidden="true" />
+                Load more results
+              </button>
+            </div>
+          ) : null}
         </section>
       )}
 

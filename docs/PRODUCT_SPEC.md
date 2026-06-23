@@ -39,17 +39,17 @@ ScribeFlow supports uploaded audio and browser live recording. It persists Deepg
 
 ## Requirement Mapping
 
-| Assignment requirement                  | Screen                                | Backend capability                                         | Test                                                    |
-| --------------------------------------- | ------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------- |
-| Speaker-labelled transcript             | `/meetings/:meetingId` transcript tab | `POST /api/meetings/:id/transcribe`, `transcript_segments` | Phase 3 API and service tests; real-audio verifier      |
-| Renameable speaker identities           | detail page speaker controls          | `PATCH /api/meetings/:meetingId/speakers/:speakerId`       | API test with repository double in Phase 2              |
-| Structured summary                      | detail page overview tab              | `MeetingAnalysisService`                                   | Structured-output schema tests in Phase 5               |
-| Action items with task, owner, deadline | detail page action items tab          | `PATCH /api/action-items/:actionItemId`, `action_items`    | Status API test in Phase 2; extraction tests in Phase 5 |
-| Searchable meeting archive using RAG    | `/archive`, `/search`                 | `SearchService`, `EmbeddingService`, `meeting_chunks`      | Retrieval tests in Phase 6                              |
-| Meeting analytics                       | `/analytics`, detail analytics tab    | deterministic speaker timing now; cross-meeting later      | Phase 3 detail UI tests; Phase 8 query tests            |
-| Live microphone meeting mode            | `/meetings/new` live tab              | WebSocket preparation only                                 | WebSocket tests in Phase 7                              |
-| Polished UI                             | all frontend routes                   | API error shape for explicit states                        | route and integration tests                             |
-| Server-only provider secrets            | no frontend secret access             | environment validation and backend-only Supabase client    | secret scans and health test                            |
+| Assignment requirement                  | Screen                                | Backend capability                                                                                    | Test                                                    |
+| --------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Speaker-labelled transcript             | `/meetings/:meetingId` transcript tab | `POST /api/meetings/:id/transcribe`, `transcript_segments`                                            | Phase 3 API and service tests; real-audio verifier      |
+| Renameable speaker identities           | detail page speaker controls          | `PATCH /api/meetings/:meetingId/speakers/:speakerId`                                                  | API test with repository double in Phase 2              |
+| Structured summary                      | detail page overview tab              | `MeetingAnalysisService`                                                                              | Structured-output schema tests in Phase 5               |
+| Action items with task, owner, deadline | detail page action items tab          | `PATCH /api/action-items/:actionItemId`, `action_items`                                               | Status API test in Phase 2; extraction tests in Phase 5 |
+| Searchable meeting archive using RAG    | `/archive`, `/search`                 | `SearchService`, `EmbeddingService`, `meeting_chunks`                                                 | Retrieval tests in Phase 6                              |
+| Meeting analytics                       | `/analytics`, detail analytics tab    | `GET /api/analytics` (cross-meeting) and `GET /api/meetings/:id/analytics`, deterministic aggregation | analytics API tests; Analytics page tests               |
+| Live microphone meeting mode            | `/meetings/new` live tab              | WebSocket preparation only                                                                            | WebSocket tests in Phase 7                              |
+| Polished UI                             | all frontend routes                   | API error shape for explicit states                                                                   | route and integration tests                             |
+| Server-only provider secrets            | no frontend secret access             | environment validation and backend-only Supabase client                                               | secret scans and health test                            |
 
 ## Success Metrics
 
