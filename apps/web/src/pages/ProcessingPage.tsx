@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Play, RefreshCw, Workflow } from "lucide-react";
@@ -203,6 +203,17 @@ export function ProcessingPage() {
     autoStartedAnalysisIds.add(meetingId);
     analyzeMutation.mutate();
   }, [analyzeMutation, canAutoStartAnalysis, meetingId]);
+
+  // Once processing reaches completion, move the user to the finished meeting
+  // instead of stranding them on the processing screen (covers revisits where
+  // analysis already ran).
+  const hasAutoAdvancedRef = useRef(false);
+  useEffect(() => {
+    if (meeting?.status === "completed" && meetingId && !hasAutoAdvancedRef.current) {
+      hasAutoAdvancedRef.current = true;
+      navigate(`/meetings/${meetingId}`, { replace: true });
+    }
+  }, [meeting?.status, meetingId, navigate]);
 
   return (
     <div className="space-y-8">

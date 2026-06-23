@@ -140,6 +140,8 @@ sequenceDiagram
 
 Phase 4A adds the backend Gemini service, `POST /api/meetings/:meetingId/analyze`, and `public.persist_meeting_analysis(...)`. The endpoint is idempotent: if a persisted summary already exists, it returns the stored analysis without another Gemini call. Gemini receives text-only transcript data, never audio or credentials.
 
+After analysis persists and the meeting reaches `completed`, the analyze handler advances the pipeline's final stage by calling `MeetingIndexingService.indexMeeting(...)` in the same request (see `ensureMeetingIndexed` in `meetingRoutes.ts`). Indexing is idempotent (it is skipped when chunks already exist) and its failures are logged but never fail analysis, so semantic search is populated automatically for every meeting created through the UI rather than requiring a separate manual `POST /api/meetings/:id/index` call.
+
 ## Planned RAG Flow After Analysis
 
 ```mermaid
@@ -200,6 +202,13 @@ Transcript chunking is needed because full meeting transcripts can exceed model 
 ## Analytics Computation Strategy
 
 Speaking time, participant count, action item count, completion rate and topic counts should be deterministic calculations. Phase 3 calculates meeting-level speaking time from Deepgram word timestamps and stores totals on `meeting_speakers`. An LLM should not estimate these values because the source records already contain exact timestamps and statuses. Deterministic calculations are reproducible, debuggable and easier to explain in a viva.
+
+Analytics are exposed through two repository-backed endpoints:
+
+- `GET /api/meetings/:meetingId/analytics` aggregates a single meeting (duration, participant count, per-speaker breakdown, action-item completion rate, topics).
+- `GET /api/analytics` aggregates across all meetings (meeting frequency per day, recurring topics, speaker participation, and an action-item completion trend), validated against `crossMeetingAnalyticsSchema`.
+
+Both compute results in SQL/TypeScript from persisted rows — no LLM and no client-side fan-out. This replaced the earlier client-side aggregation that fetched and recomputed across a capped subset of meeting details.
 
 ## Security Boundaries
 

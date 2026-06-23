@@ -8,18 +8,24 @@ import { LoadingState } from "../components/LoadingState";
 import { MeetingRow } from "../components/MeetingRow";
 import { PageHeader } from "../components/PageHeader";
 import { SearchInput } from "../components/SearchInput";
-import { listMeetings } from "../lib/apiClient";
+import { getCrossMeetingAnalytics, listMeetings } from "../lib/apiClient";
 
 export function ArchivePage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [sourceType, setSourceType] = useState("");
+  const [topic, setTopic] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [sort, setSort] = useState<MeetingListQuery["sort"]>("createdAt");
   const [order, setOrder] = useState<MeetingListQuery["order"]>("desc");
   const [page, setPage] = useState(1);
 
   const meetingsQuery = useQuery({
-    queryKey: ["meetings", { query, status, sourceType, sort, order, page }],
+    queryKey: [
+      "meetings",
+      { query, status, sourceType, topic, startDate, endDate, sort, order, page },
+    ],
     queryFn: () =>
       listMeetings({
         page,
@@ -29,10 +35,21 @@ export function ArchivePage() {
         sourceType: (sourceType || undefined) as
           | MeetingListQuery["sourceType"]
           | undefined,
+        topic: topic || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
         sort,
         order,
       }),
   });
+
+  // Topic options reuse the cached cross-meeting analytics query.
+  const topicsQuery = useQuery({
+    queryKey: ["analytics", "cross-meeting"],
+    queryFn: getCrossMeetingAnalytics,
+    staleTime: 5 * 60 * 1000,
+  });
+  const topicOptions = topicsQuery.data?.topRecurringTopics ?? [];
 
   const items = meetingsQuery.data?.items ?? [];
   const pagination = meetingsQuery.data?.pagination;
@@ -55,21 +72,58 @@ export function ArchivePage() {
           }}
           placeholder="Search meeting titles"
         />
-        <div className="grid gap-3 md:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <label className="block">
             <span className="sf-label flex items-center gap-2">
               <CalendarRange size={16} aria-hidden="true" />
-              Date
+              From
             </span>
-            <input type="date" className="sf-field mt-2" disabled />
+            <input
+              type="date"
+              className="sf-field mt-2"
+              value={startDate}
+              max={endDate || undefined}
+              onChange={(event) => {
+                setStartDate(event.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
+          <label className="block">
+            <span className="sf-label flex items-center gap-2">
+              <CalendarRange size={16} aria-hidden="true" />
+              To
+            </span>
+            <input
+              type="date"
+              className="sf-field mt-2"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={(event) => {
+                setEndDate(event.target.value);
+                setPage(1);
+              }}
+            />
           </label>
           <label className="block">
             <span className="sf-label flex items-center gap-2">
               <Filter size={16} aria-hidden="true" />
               Topic
             </span>
-            <select className="sf-field mt-2" defaultValue="" disabled>
+            <select
+              className="sf-field mt-2"
+              value={topic}
+              onChange={(event) => {
+                setTopic(event.target.value);
+                setPage(1);
+              }}
+            >
               <option value="">All topics</option>
+              {topicOptions.map((option) => (
+                <option key={option.topic} value={option.topic}>
+                  {option.topic}
+                </option>
+              ))}
             </select>
           </label>
           <label className="block">

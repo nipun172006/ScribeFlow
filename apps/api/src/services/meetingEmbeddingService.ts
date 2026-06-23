@@ -24,7 +24,7 @@ type GeminiEmbeddingClient = {
   models: {
     embedContent: (request: {
       model: string;
-      contents: string;
+      contents: string | string[];
       config?: {
         outputDimensionality?: number;
       };
@@ -59,9 +59,13 @@ export class GeminiMeetingEmbeddingService implements MeetingEmbeddingService {
   }
 
   /**
-   * Embeds one or more texts via the Gemini embedding model.
+   * Embeds one or more texts via the Gemini embedding model in a single
+   * batched request.
    *
-   * Each returned vector is validated to match the configured dimensionality
+   * All inputs are sent in one `embedContent` call (the Gemini API accepts an
+   * array of contents and returns embeddings in input order), so a meeting
+   * with N chunks costs one round-trip instead of N. Each returned vector is
+   * validated to match the configured dimensionality
    * ({@link env.GEMINI_EMBEDDING_DIMENSIONS}); a mismatch is treated as an
    * invalid provider response. Upstream Gemini failures are normalised into
    * the appropriate {@link ApiError} (auth, rate limit, timeout or generic).
@@ -80,30 +84,37 @@ export class GeminiMeetingEmbeddingService implements MeetingEmbeddingService {
       throw ApiError.badRequest("At least one text is required for embedding.");
     }
 
+    const trimmedTexts = texts.map((text) => text.trim());
+    if (trimmedTexts.some((text) => !text)) {
+      throw ApiError.badRequest("Embedding text cannot be empty.");
+    }
+
     const client = this.getClient();
     const model = env.GEMINI_EMBEDDING_MODEL;
     const expectedDimensions = env.GEMINI_EMBEDDING_DIMENSIONS;
 
     try {
-      const results: EmbeddingResult[] = [];
+      const response = await client.models.embedContent({
+        model,
+        contents: trimmedTexts,
+        config: {
+          outputDimensionality: expectedDimensions,
+        },
+      });
 
-      for (const text of texts) {
-        const trimmed = text.trim();
-        if (!trimmed) {
-          throw ApiError.badRequest("Embedding text cannot be empty.");
-        }
+      const embeddings = response.embeddings;
+      if (!embeddings || embeddings.length !== trimmedTexts.length) {
+        throw ApiError.geminiInvalidResponse(
+          `Gemini returned ${embeddings?.length ?? 0} embeddings for ${trimmedTexts.length} inputs.`,
+        );
+      }
 
-        const response = await client.models.embedContent({
-          model,
-          contents: trimmed,
-          config: {
-            outputDimensionality: expectedDimensions,
-          },
-        });
-
-        const embeddingValues = response.embeddings?.[0]?.values;
+      return embeddings.map((entry, index) => {
+        const embeddingValues = entry?.values;
         if (!embeddingValues || embeddingValues.length === 0) {
-          throw ApiError.geminiInvalidResponse("Gemini returned an empty embedding.");
+          throw ApiError.geminiInvalidResponse(
+            `Gemini returned an empty embedding for input ${index}.`,
+          );
         }
 
         if (embeddingValues.length !== expectedDimensions) {
@@ -121,13 +132,11 @@ export class GeminiMeetingEmbeddingService implements MeetingEmbeddingService {
           );
         }
 
-        results.push({
+        return {
           embedding: embeddingValues,
           dimensions: embeddingValues.length,
-        });
-      }
-
-      return results;
+        };
+      });
     } catch (error) {
       if (error instanceof ApiError) {
         throw error;

@@ -5,6 +5,7 @@ import type {
   analyzeMeetingResponseSchema,
   apiErrorCodeSchema,
   apiErrorResponseSchema,
+  crossMeetingAnalyticsSchema,
   meetingDetailSchema,
   meetingAnalyticsSchema,
   meetingListQuerySchema,
@@ -62,6 +63,7 @@ export type StructuredAnalysisActionItem = z.infer<
 export type MeetingTopic = z.infer<typeof meetingTopicSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type MeetingAnalytics = z.infer<typeof meetingAnalyticsSchema>;
+export type CrossMeetingAnalytics = z.infer<typeof crossMeetingAnalyticsSchema>;
 export type UploadMeetingInput = z.infer<typeof uploadMeetingInputSchema>;
 export type UploadInstructions = z.infer<typeof uploadInstructionsSchema>;
 export type UploadMeetingResponse = z.infer<typeof uploadMeetingResponseSchema>;

@@ -7,6 +7,7 @@ type SearchInputProps = {
   label: string;
   onChange: (value: string) => void;
   onSubmit?: () => void;
+  disabled?: boolean;
 };
 
 export function SearchInput({
@@ -15,6 +16,7 @@ export function SearchInput({
   label,
   onChange,
   onSubmit,
+  disabled = false,
 }: SearchInputProps) {
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -37,7 +39,9 @@ export function SearchInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="sf-field pl-10"
+        disabled={disabled}
+        aria-busy={disabled}
+        className="sf-field pl-10 disabled:cursor-not-allowed disabled:opacity-60"
       />
     </form>
   );

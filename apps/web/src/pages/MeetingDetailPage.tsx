@@ -7,7 +7,11 @@ import {
   AlertTriangle,
   BarChart3,
   CheckSquare,
+  Copy,
+  Download,
+  FileDown,
   FileText,
+  Gauge,
   ListChecks,
   LocateFixed,
   MessageSquareText,
@@ -28,6 +32,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SpeakerBadge } from "../components/SpeakerBadge";
 import { StatusBadge } from "../components/StatusBadge";
 import { TranscriptSegmentRow } from "../components/TranscriptSegmentRow";
+import { useToastNotifier } from "../hooks/toastContext";
 import {
   analyzeMeeting,
   ApiClientError,
@@ -35,6 +40,16 @@ import {
   renameSpeaker,
   updateActionItemStatus,
 } from "../lib/apiClient";
+import { copyToClipboard } from "../lib/clipboard";
+import {
+  downloadTextFile,
+  formatMeetingMarkdown,
+  formatTranscriptSrt,
+  formatTranscriptTxt,
+  formatTranscriptVtt,
+  slugify,
+  type TranscriptEntry,
+} from "../lib/exporters";
 import { formatBytes, formatDate, formatDuration } from "../lib/format";
 
 const detailTabs = [
@@ -67,6 +82,7 @@ export function MeetingDetailPage() {
   const { meetingId } = useParams();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { notify } = useToastNotifier();
   const [transcriptQuery, setTranscriptQuery] = useState("");
   const [speakerFilter, setSpeakerFilter] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
@@ -76,12 +92,20 @@ export function MeetingDetailPage() {
     queryKey: ["meeting-detail", meetingId],
     queryFn: () => getMeetingDetail(meetingId ?? ""),
     enabled: Boolean(meetingId),
+    staleTime: 60_000,
   });
 
   const renameMutation = useMutation({
     mutationFn: renameSpeaker,
     onSuccess: () => {
+      notify("Speaker renamed", "success");
       void queryClient.invalidateQueries({ queryKey: ["meeting-detail", meetingId] });
+    },
+    onError: (error) => {
+      notify(
+        error instanceof Error ? error.message : "Could not rename speaker",
+        "error",
+      );
     },
   });
 
@@ -96,16 +120,32 @@ export function MeetingDetailPage() {
       updateActionItemStatus(item.id, {
         status,
       }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      notify(
+        variables.status === "completed"
+          ? "Action item completed"
+          : "Action item reopened",
+        "success",
+      );
       void queryClient.invalidateQueries({ queryKey: ["meeting-detail", meetingId] });
+    },
+    onError: (error) => {
+      notify(
+        error instanceof Error ? error.message : "Could not update action item",
+        "error",
+      );
     },
   });
 
   const analysisMutation = useMutation({
     mutationFn: () => analyzeMeeting(meetingId ?? ""),
     onSuccess: () => {
+      notify("Analysis complete", "success");
       void queryClient.invalidateQueries({ queryKey: ["meeting-detail", meetingId] });
       void queryClient.invalidateQueries({ queryKey: ["meetings"] });
+    },
+    onError: (error) => {
+      notify(error instanceof Error ? error.message : "Analysis failed", "error");
     },
   });
 
@@ -201,6 +241,67 @@ export function MeetingDetailPage() {
     }, 4500);
   }, []);
 
+  const transcriptionConfidence = useMemo(() => {
+    const meta = meeting?.metadata as Record<string, unknown> | undefined;
+    const transcription =
+      meta && typeof meta.transcription === "object" && meta.transcription !== null
+        ? (meta.transcription as Record<string, unknown>)
+        : null;
+    const value = transcription?.confidence;
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }, [meeting?.metadata]);
+
+  const handleCopySummary = useCallback(async () => {
+    if (!detail) {
+      return;
+    }
+    const copied = await copyToClipboard(formatMeetingMarkdown(detail));
+    notify(
+      copied ? "Summary copied to clipboard" : "Could not copy summary",
+      copied ? "success" : "error",
+    );
+  }, [detail, notify]);
+
+  const handleExportMarkdown = useCallback(() => {
+    if (!detail || !meeting) {
+      return;
+    }
+    downloadTextFile(
+      `${slugify(meeting.title)}.md`,
+      formatMeetingMarkdown(detail),
+      "text/markdown;charset=utf-8",
+    );
+    notify("Markdown exported", "success");
+  }, [detail, meeting, notify]);
+
+  const handleDownloadTranscript = useCallback(
+    (format: "txt" | "srt" | "vtt") => {
+      if (!detail || !meeting) {
+        return;
+      }
+      const entries: TranscriptEntry[] = detail.transcriptSegments.map((segment) => ({
+        speaker: getSegmentSpeaker(segment)?.displayName ?? "Unknown speaker",
+        startMs: segment.startMs,
+        endMs: segment.endMs,
+        text: segment.text,
+      }));
+      const base = slugify(meeting.title);
+      if (format === "txt") {
+        downloadTextFile(`${base}.txt`, formatTranscriptTxt(entries));
+      } else if (format === "srt") {
+        downloadTextFile(
+          `${base}.srt`,
+          formatTranscriptSrt(entries),
+          "application/x-subrip",
+        );
+      } else {
+        downloadTextFile(`${base}.vtt`, formatTranscriptVtt(entries), "text/vtt");
+      }
+      notify(`Transcript downloaded (.${format})`, "success");
+    },
+    [detail, meeting, getSegmentSpeaker, notify],
+  );
+
   useEffect(() => {
     if (!detail || hasScrolledToUrlSegment) return;
 
@@ -224,7 +325,33 @@ export function MeetingDetailPage() {
             ? "Persisted metadata, transcript, summary, actions and analytics are shown from Supabase-backed API responses."
             : `Record ${meetingId ?? "unknown"} is being loaded from the API.`
         }
-        actions={meeting ? <StatusBadge status={meeting.status} /> : null}
+        actions={
+          meeting ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {detail?.summary ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCopySummary}
+                    className="sf-secondary-button px-3 py-2"
+                  >
+                    <Copy size={16} aria-hidden="true" />
+                    Copy summary
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportMarkdown}
+                    className="sf-secondary-button px-3 py-2"
+                  >
+                    <FileDown size={16} aria-hidden="true" />
+                    Export Markdown
+                  </button>
+                </>
+              ) : null}
+              <StatusBadge status={meeting.status} />
+            </div>
+          ) : null
+        }
       />
 
       {meetingQuery.isLoading ? <LoadingState label="Loading meeting detail" /> : null}
@@ -453,6 +580,30 @@ export function MeetingDetailPage() {
                     </label>
                   </section>
 
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-border bg-surface px-4 py-3">
+                    <span className="text-sm text-muted">
+                      {detail.transcriptSegments.length} segment
+                      {detail.transcriptSegments.length === 1 ? "" : "s"} ·{" "}
+                      {detail.speakers.length} speaker
+                      {detail.speakers.length === 1 ? "" : "s"}
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                        <Download size={14} aria-hidden="true" /> Download
+                      </span>
+                      {(["txt", "srt", "vtt"] as const).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          onClick={() => handleDownloadTranscript(fmt)}
+                          className="rounded-control border border-border bg-surface-raised px-2.5 py-1.5 text-xs font-semibold text-primary transition duration-fast hover:border-accent/70"
+                        >
+                          {fmt.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {filteredSegments.length > 0 ? (
                     filteredSegments.map((segment) => {
                       const speaker = getSegmentSpeaker(segment);
@@ -525,11 +676,15 @@ export function MeetingDetailPage() {
                       page.
                     </p>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <MetricCard
                       label="Speaker count"
                       value={String(detail.speakers.length)}
-                      detail="Persisted diarised speaker records"
+                      detail={
+                        detail.speakers.length < 3
+                          ? "Fewer than 3 speakers separated"
+                          : "Persisted diarised speaker records"
+                      }
                       icon={<UsersRound size={18} aria-hidden="true" />}
                     />
                     <MetricCard
@@ -548,9 +703,21 @@ export function MeetingDetailPage() {
                       }
                       icon={<UsersRound size={18} aria-hidden="true" />}
                     />
+                    {transcriptionConfidence != null ? (
+                      <MetricCard
+                        label="Transcript confidence"
+                        value={`${Math.round(transcriptionConfidence * 100)}%`}
+                        detail="Avg word confidence (WER proxy)"
+                        icon={<Gauge size={18} aria-hidden="true" />}
+                      />
+                    ) : null}
                   </div>
                   {canRenderResponsiveChart ? (
-                    <div className="h-72 w-full">
+                    <div
+                      className="h-72 w-full"
+                      role="img"
+                      aria-label="Bar chart of speaking time per speaker in seconds"
+                    >
                       <ResponsiveContainer minWidth={320} minHeight={240}>
                         <BarChart data={speakerAnalytics}>
                           <XAxis

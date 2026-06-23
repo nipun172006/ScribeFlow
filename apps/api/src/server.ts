@@ -40,3 +40,12 @@ function shutdown(signal: NodeJS.Signals) {
 
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "unhandled promise rejection");
+});
+
+process.on("uncaughtException", (error) => {
+  logger.fatal({ err: error }, "uncaught exception, shutting down");
+  process.exit(1);
+});

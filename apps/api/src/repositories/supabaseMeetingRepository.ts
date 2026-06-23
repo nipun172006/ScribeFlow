@@ -1,6 +1,7 @@
 import type {
   ActionItem,
   AnalyzeMeetingResponse,
+  CrossMeetingAnalytics,
   Meeting,
   MeetingAnalytics,
   MeetingDetail,
@@ -38,6 +39,13 @@ const meetingSortColumns: Record<MeetingListQuery["sort"], string> = {
 
 const isMissingRowError = (error: { code?: string } | null) =>
   error?.code === "PGRST116";
+
+// Sentinel id used so a topic filter that matches no meetings returns an empty
+// page instead of silently dropping the `in` constraint.
+const NO_MATCH_MEETING_ID = "00000000-0000-0000-0000-000000000000";
+
+const toDayKey = (value: string | null): string | null =>
+  value && value.length >= 10 ? value.slice(0, 10) : null;
 
 const asUnknownRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -339,6 +347,31 @@ export class SupabaseMeetingRepository implements MeetingRepository {
       request = request.ilike("title", `%${query.query}%`);
     }
 
+    if (query.startDate) {
+      request = request.gte("created_at", `${query.startDate}T00:00:00.000Z`);
+    }
+
+    if (query.endDate) {
+      request = request.lte("created_at", `${query.endDate}T23:59:59.999Z`);
+    }
+
+    if (query.topic) {
+      const { data: topicRows, error: topicError } = await this.client
+        .from("meeting_topics")
+        .select("meeting_id")
+        .ilike("display_label", query.topic);
+
+      if (topicError) {
+        throw ApiError.databaseOperationFailed("Could not filter meetings by topic.");
+      }
+
+      const meetingIds = [...new Set((topicRows ?? []).map((row) => row.meeting_id))];
+      request = request.in(
+        "id",
+        meetingIds.length > 0 ? meetingIds : [NO_MATCH_MEETING_ID],
+      );
+    }
+
     const { data, error, count } = await request
       .order(sortColumn, { ascending: query.order === "asc" })
       .range(from, to);
@@ -598,7 +631,211 @@ export class SupabaseMeetingRepository implements MeetingRepository {
     return mapActionItem(data);
   }
 
-  async getMeetingAnalytics(_meetingId: string): Promise<MeetingAnalytics | null> {
-    return null;
+  async getMeetingAnalytics(meetingId: string): Promise<MeetingAnalytics | null> {
+    const { data: meeting, error: meetingError } = await this.client
+      .from("meetings")
+      .select("id, duration_seconds")
+      .eq("id", meetingId)
+      .maybeSingle();
+
+    if (meetingError && !isMissingRowError(meetingError)) {
+      throw ApiError.databaseOperationFailed("Could not retrieve the meeting.");
+    }
+
+    if (!meeting) {
+      return null;
+    }
+
+    const [speakersResult, actionItemsResult, topicsResult] = await Promise.all([
+      this.client
+        .from("meeting_speakers")
+        .select("id, display_name, total_speaking_seconds, speaking_percentage")
+        .eq("meeting_id", meetingId)
+        .order("raw_speaker_index", { ascending: true }),
+      this.client.from("action_items").select("status").eq("meeting_id", meetingId),
+      this.client
+        .from("meeting_topics")
+        .select("display_label, mention_count")
+        .eq("meeting_id", meetingId)
+        .order("mention_count", { ascending: false }),
+    ]);
+
+    const errors = [
+      speakersResult.error,
+      actionItemsResult.error,
+      topicsResult.error,
+    ].filter(Boolean);
+
+    if (errors.length > 0) {
+      throw ApiError.databaseOperationFailed("Could not retrieve meeting analytics.");
+    }
+
+    const speakers = speakersResult.data ?? [];
+    const actionItems = actionItemsResult.data ?? [];
+    const topics = topicsResult.data ?? [];
+
+    const actionItemCount = actionItems.length;
+    const completedActionItemCount = actionItems.filter(
+      (item) => item.status === "completed",
+    ).length;
+
+    return {
+      durationSeconds: meeting.duration_seconds ?? 0,
+      participantCount: speakers.length,
+      speakingBreakdown: speakers.map((speaker) => ({
+        speakerId: speaker.id,
+        displayName: speaker.display_name,
+        totalSpeakingSeconds: speaker.total_speaking_seconds ?? 0,
+        speakingPercentage: speaker.speaking_percentage ?? 0,
+      })),
+      actionItemCount,
+      completedActionItemCount,
+      completionRate:
+        actionItemCount > 0 ? (completedActionItemCount / actionItemCount) * 100 : 0,
+      topics: topics.map((topic) => ({
+        topic: topic.display_label,
+        count: topic.mention_count ?? 0,
+      })),
+    };
+  }
+
+  async getCrossMeetingAnalytics(): Promise<CrossMeetingAnalytics> {
+    const [meetingsResult, actionItemsResult, topicsResult, speakersResult] =
+      await Promise.all([
+        this.client
+          .from("meetings")
+          .select("id, status, created_at")
+          .order("created_at", { ascending: true })
+          .limit(2000),
+        this.client.from("action_items").select("status, created_at").limit(10000),
+        this.client
+          .from("meeting_topics")
+          .select("normalized_label, display_label, mention_count")
+          .limit(10000),
+        this.client
+          .from("meeting_speakers")
+          .select("display_name, total_speaking_seconds")
+          .limit(10000),
+      ]);
+
+    const errors = [
+      meetingsResult.error,
+      actionItemsResult.error,
+      topicsResult.error,
+      speakersResult.error,
+    ].filter(Boolean);
+
+    if (errors.length > 0) {
+      throw ApiError.databaseOperationFailed(
+        "Could not compute cross-meeting analytics.",
+      );
+    }
+
+    const meetings = meetingsResult.data ?? [];
+    const actionItems = actionItemsResult.data ?? [];
+    const topicRows = topicsResult.data ?? [];
+    const speakerRows = speakersResult.data ?? [];
+
+    // Meeting frequency bucketed per day.
+    const frequencyMap = new Map<string, number>();
+    for (const meeting of meetings) {
+      const day = toDayKey(meeting.created_at);
+      if (day) {
+        frequencyMap.set(day, (frequencyMap.get(day) ?? 0) + 1);
+      }
+    }
+    const meetingFrequency = [...frequencyMap.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, value]) => ({ date, value }));
+
+    // Recurring topics aggregated by normalized label, summing mentions.
+    const topicMap = new Map<string, { topic: string; count: number }>();
+    for (const topic of topicRows) {
+      const existing = topicMap.get(topic.normalized_label);
+      if (existing) {
+        existing.count += topic.mention_count ?? 0;
+      } else {
+        topicMap.set(topic.normalized_label, {
+          topic: topic.display_label,
+          count: topic.mention_count ?? 0,
+        });
+      }
+    }
+    const topRecurringTopics = [...topicMap.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20);
+
+    // Speaker participation aggregated by display name across meetings.
+    const speakerMap = new Map<string, number>();
+    for (const speaker of speakerRows) {
+      speakerMap.set(
+        speaker.display_name,
+        (speakerMap.get(speaker.display_name) ?? 0) +
+          (speaker.total_speaking_seconds ?? 0),
+      );
+    }
+    const speakerParticipation = [...speakerMap.entries()]
+      .map(([displayName, totalSpeakingSeconds]) => ({
+        displayName,
+        totalSpeakingSeconds,
+      }))
+      .sort((a, b) => b.totalSpeakingSeconds - a.totalSpeakingSeconds)
+      .slice(0, 12);
+
+    // Action-item completion trend bucketed per creation day.
+    const completionMap = new Map<
+      string,
+      { openCount: number; completedCount: number }
+    >();
+    let completedActionItemCount = 0;
+    for (const item of actionItems) {
+      if (item.status === "completed") {
+        completedActionItemCount += 1;
+      }
+      const day = toDayKey(item.created_at);
+      if (!day) {
+        continue;
+      }
+      const bucket = completionMap.get(day) ?? { openCount: 0, completedCount: 0 };
+      if (item.status === "completed") {
+        bucket.completedCount += 1;
+      } else {
+        bucket.openCount += 1;
+      }
+      completionMap.set(day, bucket);
+    }
+    const actionItemCompletion = [...completionMap.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, bucket]) => {
+        const total = bucket.openCount + bucket.completedCount;
+        return {
+          date,
+          openCount: bucket.openCount,
+          completedCount: bucket.completedCount,
+          completionRate: total > 0 ? (bucket.completedCount / total) * 100 : 0,
+        };
+      });
+
+    const actionItemCount = actionItems.length;
+    const totalSpeakingSeconds = speakerRows.reduce(
+      (sum, speaker) => sum + (speaker.total_speaking_seconds ?? 0),
+      0,
+    );
+
+    return {
+      totals: {
+        meetingCount: meetings.length,
+        completedMeetingCount: meetings.filter((m) => m.status === "completed").length,
+        actionItemCount,
+        completedActionItemCount,
+        completionRate:
+          actionItemCount > 0 ? (completedActionItemCount / actionItemCount) * 100 : 0,
+        totalSpeakingSeconds,
+      },
+      meetingFrequency,
+      topRecurringTopics,
+      speakerParticipation,
+      actionItemCompletion,
+    };
   }
 }

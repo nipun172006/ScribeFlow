@@ -1,9 +1,21 @@
 import { Router } from "express";
-import { featureNotImplemented } from "../controllers/unimplementedController.js";
+import { crossMeetingAnalyticsSchema } from "@scribeflow/shared";
+import type { ApiDependencies } from "../dependencies.js";
 
-export const analyticsRoutes = Router();
+export function createAnalyticsRoutes(dependencies: ApiDependencies) {
+  const router = Router();
 
-analyticsRoutes.get(
-  "/analytics",
-  featureNotImplemented("Cross-meeting analytics are not connected yet."),
-);
+  router.get("/analytics", async (_req, res, next) => {
+    try {
+      const analytics = await dependencies
+        .getMeetingRepository()
+        .getCrossMeetingAnalytics();
+
+      res.json(crossMeetingAnalyticsSchema.parse(analytics));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  return router;
+}

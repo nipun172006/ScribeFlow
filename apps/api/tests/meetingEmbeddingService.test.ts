@@ -49,11 +49,16 @@ describe("GeminiMeetingEmbeddingService", () => {
     expect(embedContent).toHaveBeenCalledOnce();
   });
 
-  it("embeds multiple texts successfully", async () => {
+  it("embeds multiple texts successfully in a single batched call", async () => {
     const { GeminiMeetingEmbeddingService } = await loadService();
-    const embedContent = vi.fn(async () => ({
-      embeddings: [{ values: mockEmbedding }],
-    }));
+    const embedContent = vi.fn(async (request: { contents: string | string[] }) => {
+      const count = Array.isArray(request.contents) ? request.contents.length : 1;
+      return {
+        embeddings: Array.from({ length: count }, () => ({
+          values: mockEmbedding,
+        })),
+      };
+    });
 
     const service = new GeminiMeetingEmbeddingService(() => ({
       models: { embedContent },
@@ -66,7 +71,8 @@ describe("GeminiMeetingEmbeddingService", () => {
       expect(result.embedding).toEqual(mockEmbedding);
       expect(result.dimensions).toBe(768);
     });
-    expect(embedContent).toHaveBeenCalledTimes(3);
+    // Batched: one round-trip for the whole set, not one per text.
+    expect(embedContent).toHaveBeenCalledOnce();
   });
 
   it("rejects empty text", async () => {

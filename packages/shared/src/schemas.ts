@@ -206,6 +206,38 @@ export const meetingAnalyticsSchema = z.object({
   topics: z.array(topicAnalyticsSchema),
 });
 
+export const crossMeetingTimeseriesPointSchema = z.object({
+  date: z.string().min(1),
+  value: z.number().int().nonnegative(),
+});
+
+export const crossMeetingCompletionPointSchema = z.object({
+  date: z.string().min(1),
+  openCount: z.number().int().nonnegative(),
+  completedCount: z.number().int().nonnegative(),
+  completionRate: z.number().min(0).max(100),
+});
+
+export const crossMeetingSpeakerSchema = z.object({
+  displayName: z.string().min(1),
+  totalSpeakingSeconds: z.number().nonnegative(),
+});
+
+export const crossMeetingAnalyticsSchema = z.object({
+  totals: z.object({
+    meetingCount: z.number().int().nonnegative(),
+    completedMeetingCount: z.number().int().nonnegative(),
+    actionItemCount: z.number().int().nonnegative(),
+    completedActionItemCount: z.number().int().nonnegative(),
+    completionRate: z.number().min(0).max(100),
+    totalSpeakingSeconds: z.number().nonnegative(),
+  }),
+  meetingFrequency: z.array(crossMeetingTimeseriesPointSchema),
+  topRecurringTopics: z.array(topicAnalyticsSchema),
+  speakerParticipation: z.array(crossMeetingSpeakerSchema),
+  actionItemCompletion: z.array(crossMeetingCompletionPointSchema),
+});
+
 export const meetingTopicSchema = z.object({
   id: uuidSchema,
   meetingId: uuidSchema,
@@ -268,12 +300,19 @@ export const uploadCompletionResponseSchema = z.object({
   meeting: meetingSchema,
 });
 
+const isoDateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format.");
+
 export const meetingListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   status: meetingStatusSchema.optional(),
   sourceType: meetingSourceTypeSchema.optional(),
   query: z.string().trim().max(160).optional(),
+  topic: z.string().trim().min(1).max(160).optional(),
+  startDate: isoDateOnlySchema.optional(),
+  endDate: isoDateOnlySchema.optional(),
   sort: z.enum(["createdAt", "recordedAt", "title"]).default("createdAt"),
   order: z.enum(["asc", "desc"]).default("desc"),
 });
