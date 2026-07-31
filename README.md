@@ -11,15 +11,14 @@ diarisation, structured analysis, and retrieval-augmented (RAG) indexing — so
 every decision, action item, and summary point links straight back to the exact
 moment it was said.
 
-This was built as a team project. My contributions focused on product and
-engineering work across the application; the repository history records the
-individual contributions from each collaborator.
+ScribeFlow was built as a team project. The repository history and merged pull
+requests record the contributors; this README does not assign individual
+ownership until the team has confirmed those areas.
 
 <p>
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.x-3178c6">
   <img alt="Node" src="https://img.shields.io/badge/Node-22.13%20LTS-3c873a">
   <img alt="React" src="https://img.shields.io/badge/React-19-149eca">
-  <img alt="License" src="https://img.shields.io/badge/license-private-lightgrey">
 </p>
 
 ---
@@ -27,6 +26,7 @@ individual contributions from each collaborator.
 ## Contents
 
 - [Features](#features)
+- [Product Preview](#product-preview)
 - [Tech Stack](#tech-stack)
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
@@ -36,11 +36,14 @@ individual contributions from each collaborator.
 - [Verifying Integrations](#verifying-integrations)
 - [Validation Pipeline](#validation-pipeline)
 - [Application Routes](#application-routes)
+- [Security](#security)
 - [Deployment](#deployment)
+- [Team Project](#team-project)
 - [Contributing](#contributing)
 - [Documentation](#documentation)
-- [Roadmap](#roadmap)
+- [Evaluation Methods](#evaluation-methods)
 - [Current Limitations](#current-limitations)
+- [Roadmap](#roadmap)
 
 ---
 
@@ -55,6 +58,12 @@ individual contributions from each collaborator.
 | **Semantic RAG Search**         | Transcript + analysis chunking and Gemini embeddings stored in `pgvector`, auto-indexed after analysis.                    |
 | **Analytics**                   | Deterministic cross-meeting endpoint: meeting frequency, speaking time, action-item completion trend and recurring topics. |
 | **Export & sharing**            | Copy/export a meeting summary to Markdown and download the transcript as TXT, SRT or VTT.                                  |
+
+## Product Preview
+
+No verified screenshot or public live URL is published yet. When a current
+product capture is available, place it under `docs/screenshots/` and update
+this section. No placeholder image is presented as a working deployment.
 
 ## Tech Stack
 
@@ -216,6 +225,20 @@ _If `format:check` fails, run `npm run format` first._
 | `/search`       | Global semantic search and transcript deep-linking. |
 | `/analytics`    | Cross-meeting speaker trends and topic analytics.   |
 
+## Security
+
+- Deepgram, Gemini, and Supabase privileged credentials are read by the API
+  from server-side environment variables; they must not use a `VITE_` prefix
+  or be included in the browser bundle.
+- Uploaded audio belongs in the configured private storage bucket. Access and
+  retention still depend on the deployed Supabase policies and operator
+  configuration.
+- API payloads and model responses are validated with shared Zod schemas.
+- Generated summaries and action items remain model output. Review them against
+  the linked transcript evidence before relying on them.
+- `.env.example` documents configuration names only. Real values belong in the
+  local environment or deployment secret store and must not be committed.
+
 ## Deployment
 
 ScribeFlow runs as a **single Render web service**: the compiled Express API
@@ -233,6 +256,12 @@ npm run start             # Render start command
   in GitHub.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full Render checklist.
+
+## Team Project
+
+ScribeFlow is a collaborative project. Git history and merged pull requests are
+the current source of truth for participation. Individual feature ownership is
+intentionally not claimed here until the collaborators confirm it.
 
 ## Contributing
 
