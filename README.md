@@ -1,5 +1,7 @@
 # ScribeFlow
 
+[![CI](https://github.com/nipun172006/ScribeFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/nipun172006/ScribeFlow/actions/workflows/ci.yml)
+
 > A premium AI meeting-intelligence platform that turns raw meeting audio into
 > speaker-labelled transcripts, structured summaries, actionable tasks, and a
 > semantic search index you can actually query.
@@ -8,6 +10,10 @@ ScribeFlow ingests uploaded meeting audio and runs it through transcription,
 diarisation, structured analysis, and retrieval-augmented (RAG) indexing — so
 every decision, action item, and summary point links straight back to the exact
 moment it was said.
+
+This was built as a team project. My contributions focused on product and
+engineering work across the application; the repository history records the
+individual contributions from each collaborator.
 
 <p>
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.x-3178c6">
@@ -34,6 +40,7 @@ moment it was said.
 - [Contributing](#contributing)
 - [Documentation](#documentation)
 - [Roadmap](#roadmap)
+- [Current Limitations](#current-limitations)
 
 ---
 
@@ -249,9 +256,10 @@ secret handling, validation expectations).
 - [Demo Script](docs/DEMO_SCRIPT.md)
 - [Viva Notes](docs/VIVA_NOTES.md)
 
-## Success Metrics
+## Evaluation Methods
 
-How ScribeFlow demonstrates each assignment success metric:
+The repository includes the following ways to evaluate the product. These are
+measurement methods, not claims that every target has been met in production.
 
 | Assignment metric                         | How it is measured                                                                                                                                                            |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -260,6 +268,17 @@ How ScribeFlow demonstrates each assignment success metric:
 | Action-item extraction captures all tasks | Gemini structured output extracts task / owner / deadline with transcript evidence; verify with `npm run verify:gemini:persist`.                                              |
 | Semantic search returns relevant results  | Transcript + summary chunks are embedded into `pgvector` and **auto-indexed after analysis**; verify with `npm run verify:rag`.                                               |
 | Summary has all required sections         | Attendees, key decisions, discussion points, open questions and next steps are enforced by the analysis schema and rendered on the overview tab.                              |
+
+## Current Limitations
+
+- End-to-end transcription and analysis checks require valid Deepgram, Gemini,
+  and Supabase credentials and can incur provider usage costs.
+- Accuracy varies with audio quality, accents, overlapping speakers, and the
+  language/model configuration.
+- Generated summaries and action items should be reviewed against their linked
+  transcript evidence before being treated as authoritative.
+- The current deployment is designed for a portfolio/demo workload, not a
+  formally audited production environment.
 
 ## Roadmap
 
