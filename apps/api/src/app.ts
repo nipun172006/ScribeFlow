@@ -12,6 +12,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { notFoundMiddleware } from "./middleware/notFound.js";
 import { requestIdMiddleware } from "./middleware/requestId.js";
 import { createApiRoutes } from "./routes/index.js";
+import { deriveTusEndpoint } from "./services/audioValidation.js";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultWebDistPath = path.resolve(moduleDir, "../../..", "apps/web/dist");
@@ -20,6 +21,20 @@ export function resolveWebDistPath() {
   return env.WEB_DIST_PATH
     ? path.resolve(process.cwd(), env.WEB_DIST_PATH)
     : defaultWebDistPath;
+}
+
+function uploadConnectionSources(supabaseUrl: string | undefined) {
+  const sources = ["'self'"];
+  if (!supabaseUrl) {
+    return sources;
+  }
+
+  try {
+    return [...sources, new URL(deriveTusEndpoint(supabaseUrl)).origin];
+  } catch {
+    // The upload route reports unsupported Storage URLs when signing is requested.
+    return sources;
+  }
 }
 
 function configureProductionFrontendServing(app: express.Express) {
@@ -59,7 +74,15 @@ export function createApp(dependencies: ApiDependencies = createApiDependencies(
       },
     }),
   );
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          connectSrc: uploadConnectionSources(env.SUPABASE_URL),
+        },
+      },
+    }),
+  );
   app.use(
     cors({
       origin: (origin, callback) => {

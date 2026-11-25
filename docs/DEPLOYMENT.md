@@ -81,8 +81,12 @@ WEB_ORIGIN=<custom production origin, if calling the API from another origin>
 CORS_ORIGIN=<comma-separated extra allowed origins, if needed>
 ```
 
-For the single-service Render deployment, the browser calls the same origin and
-does not need a frontend Supabase client or a public Supabase key.
+For the single-service Render deployment, browser API calls use the same
+origin. Recording bytes go directly to Supabase Storage using a signed TUS
+endpoint. The app's Content Security Policy allows connections to the exact
+Storage origin derived from `SUPABASE_URL` (typically
+`https://<project-ref>.storage.supabase.co`). The browser needs no Supabase
+API key.
 
 6. Deploy the service.
 7. Test these URLs:
